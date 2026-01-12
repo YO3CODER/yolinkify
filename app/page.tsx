@@ -115,7 +115,7 @@ export default function Home() {
       setLink("");
       setSocialPseudo("");
       setTitle(socialLinksData[0].name);
-      toast.success("Lien ajaouter avec succès 🥳 ");
+      toast.success("Lien ajouter avec succès 🥳 ");
     } catch (error) {
       console.error(error);
     }
@@ -159,7 +159,7 @@ export default function Home() {
   const copyToClipboard = () => {
     if (!pseudo) return;
 
-    const url = `/page/${pseudo}`;
+    const url = `yolinkify.versel.app/page/${pseudo}`;
     navigator.clipboard
       .writeText(url)
       .then(() => toast.success("Lien copié"))
@@ -219,6 +219,7 @@ export default function Home() {
               disabled={!pseudo}
             >
               <Copy className="w-4 h-4" />
+              Copie
             </button>
           </div>
 
