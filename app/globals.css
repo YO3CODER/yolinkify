@@ -18,20 +18,16 @@ animation:  wiggle  0.5s ease-in-out infinite ;
 } 
 
 
+
+
 @keyframes upDown {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-12px); }
 }
 
-@keyframes downUp {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(12px); }
-}
-
 .animate-up {
-  animation: upDown 1.2s ease-in-out infinite;
-}
-
-.animate-down {
-  animation: downUp 1.2s ease-in-out infinite;
+  animation-name: upDown;
+  animation-duration: 1.2s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
 }

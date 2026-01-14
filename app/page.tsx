@@ -6,7 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { addSocialLink, getSocialLinks, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
-import { Copy, Palette, Plus } from "lucide-react";
+import { Copy, ExternalLink, Palette, Plus } from "lucide-react";
 import socialLinksData from "./socialLinksData";
 import { SocialLink } from "@prisma/client";
 import EmptyState from "./components/EmptyState";
@@ -19,6 +19,10 @@ const truncateLink = (url: string, maxLenght = 20) => {
     ? url.substring(0, maxLenght) + "..."
     : url;
 };
+
+
+
+
 
 const isValidURL = (url: string) => {
   try {
@@ -40,6 +44,7 @@ export default function Home() {
   const [socialPseudo, setSocialPseudo] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
   const [links, setLinks] = useState<SocialLink[]>([]);
+  const [socialDescription, setSocialDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
 
   const themes = [
@@ -184,21 +189,35 @@ export default function Home() {
     <Wrapper>
       <Toaster position="top-right" reverseOrder={false} />
 
-      <div className="flex flex-col md:flex-row">
+      <div className="flex flex-col md:flex-row gap-4">
         <div className="md:w-2/3">
           <div className="flex justify-between items-center bg-base-200 p-5 rounded-3xl">
-            <div>
-              <span>🔥 Ta page est prête 😎 </span>
+            <div className="flex flex-wrap items-center gap-2">
+             <span className="inline-flex items-center gap-2 px-4 py-2 
+                 rounded-full bg-gradient-to-r from-orange-500 to-red-500
+                 text-white font-semibold text-sm
+                 shadow-md ">
+  🔥 Ta page est prête 😎
+</span>
+
 
               {pseudo && (
                 <Link
-                  href={`/page/${pseudo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link hidden md:flex font-bold"
-                >
-                  📄Page de : {pseudo}
-                </Link>
+  href={`/page/${pseudo}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="hidden md:flex items-center gap-2
+             px-4 py-2 rounded-xl
+             font-bold text-sm
+             bg-base-200 text-base-content
+              hover:text-white
+             transition-all duration-300
+             shadow-sm hover:shadow-md"
+>
+     <ExternalLink className="w-4 h-4" />
+  <span className="text-primary font-extrabold">{pseudo}</span>
+</Link>
+
               )}
 
               {pseudo && (
@@ -243,7 +262,7 @@ export default function Home() {
               <h3 className="font-bold text-lg">Nouveau lien </h3>
               <p className="py-4">Ajouter vos liens publics </p>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <select
                   className="select select-bordered"
                   value={title}
@@ -264,6 +283,15 @@ export default function Home() {
                   onChange={e => setSocialPseudo(e.target.value)}
                 />
 
+                {/* Champ Description */}
+<input
+  type="text"
+  placeholder="Entrez la description"
+  className="input input-bordered w-full mt-2"
+  value={socialDescription}
+  onChange={e => setSocialDescription(e.target.value)}
+/>
+
                 <input
                   type="text"
                   placeholder="Entrez l'URL"
@@ -280,11 +308,11 @@ export default function Home() {
           </dialog>
 
           {loading ? (
-            <div className="my-30 flex justify-center items-center w-full">
+            <div className="my-10 flex justify-center items-center w-full">
               <span className="loading loading-spinner loading-lg text-accent"></span>
             </div>
           ) : links.length === 0 ? (
-            <div className="flex justify-normal items-center w-full">
+            <div className="flex justify-center items-center w-full">
               <EmptyState IconComponent={"Cable"} message={"Aucun lien disponible !😭"} />
             </div>
           ) : (
@@ -302,10 +330,10 @@ export default function Home() {
           )}
         </div>
 
-        <div className="md:w-1/3 ml-4">
+        <div className="md:w-1/3">
           {pseudo && theme && (
             <div>
-              <div className="flex items-center mb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4 gap-2">
   <select
     className="select select-bordered w-full"
     value={theme}
@@ -319,7 +347,7 @@ export default function Home() {
   </select>
 
   <button
-    className={`ml-4 btn ${theme === theme2 ? 'btn-disabled' : 'btn-accent'} flex items-center justify-center`}
+    className={`btn ${theme === theme2 ? 'btn-disabled' : 'btn-accent'} flex items-center justify-center`}
     
     disabled={theme === theme2}
     title={theme === theme2 ? "Thème déjà appliqué" : "Appliquer le thème"}

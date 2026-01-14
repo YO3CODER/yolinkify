@@ -10,7 +10,7 @@ import { ToastContainer } from 'react-toastify/unstyled';
 
 const wrapper = ({ children }: WrapperProps) => {
   return (
-    <div data-theme="night" >
+    <div data-theme="cmyk" >
         <Navbar />
       <div className='px-5 md:px-[10%] mt-4 mb-10'>
         <ToastContainer 

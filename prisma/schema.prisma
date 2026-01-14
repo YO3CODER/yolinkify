@@ -12,19 +12,21 @@ model User {
   name        String?
   email       String?      @unique
   pseudo      String?      @unique
-  socialLinks SocialLink[]
   createdAt   DateTime     @default(now())
   theme       String       @default("retro")
+  socialLinks SocialLink[]
 }
 
 model SocialLink {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  url       String
-  pseudo    String
-  active    Boolean  @default(true)
-  clicks    Int      @default(0)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  url         String
+  pseudo      String
+  active      Boolean  @default(true)
+  clicks      Int      @default(0)
+  createdAt   DateTime @default(now())
+  description String?
+  fileType    String?  // pdf, image, url
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -57,29 +57,40 @@ export async function getUserInfo(identifier: string){
     }
 }
 
+export async function addSocialLink(
+  email: string,
+  title: string,
+  url: string,
+  pseudo: string,
+  description?: string, 
+  fileType?: "pdf" | "image" | "url",
+) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-export async function addSocialLink(email: string , title : string , url: string ,  pseudo : string ){
-    try {
-   const user = await  prisma.user.findUnique({
-       where : {email}
-   })
-     if(!user){
-        throw new Error("Utilisateur non trouvé")
-     }
-
-    return await prisma.socialLink.create({
-        data: {
-            userId: user?.id, 
-            title, 
-            url , 
-            pseudo , 
-        }
-
-     })
-
-    }catch (error){
-
+    if (!user) {
+      throw new Error("Utilisateur non trouvé");
     }
+
+    const newLink = await prisma.socialLink.create({
+      data: {
+        userId: user.id, // pas besoin du ? ici
+        title,
+        url,
+        pseudo,
+        description,
+        fileType: fileType || "url",
+        
+      },
+    });
+
+    return newLink;
+  } catch (error) {
+    console.error(error);
+    return null; // <-- important pour que TypeScript sache qu'on peut gérer l'erreur
+  }
 }
 
 

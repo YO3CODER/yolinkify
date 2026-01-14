@@ -1,30 +1,21 @@
-import React from "react";
 import { Cable } from "lucide-react";
+import React from "react";
 
 const Logo = () => {
   return (
-    <div
-      className="flex items-center  bg-transparent"
-      data-theme="night">
-        <div className=""> 
-      <Cable className="w-6 h-6 text-primary mr-2" />
-      </div> 
-     <div className="text-2xl font-extrabold flex items-center gap-2">
-  <span className="animate-pulse">🤩</span>
+    <div className="flex items-center gap-1">
+      {/* Icône si tu veux garder */}
+       <Cable className="w-6 h-6 text-primary" /> 
 
- <span className="flex gap-1 drop-shadow-lg font-extrabold text-2xl">
-  <span className="text-pink-500 animate-up inline-block">A</span>
-  <span className="text-purple-500 animate-down inline-block">m</span>
-  <span className="text-blue-500 animate-up inline-block">i</span>
-  <span className="text-teal-400 animate-down inline-block">r</span>
-  <span className="text-orange-400 animate-up inline-block">a</span>
-  <span className="text-rose-500 animate-down inline-block">h</span>
-</span>
+      {/* Image comme logo */}
+      <img
+        src="/YO.png"  // chemin de ton image dans le dossier public
+        alt="Logo YO LINKIFY"
+        className="w-40 h-40 object-contain animate-bounce" // taille et animation
+      />
 
-
-  <span className="animate-spin">🔥</span>
-</div>
-
+      {/* Optionnel : texte ou emoji */}
+      <span className="text-2xl font-extrabold animate-pulse gap-1">🤩</span>
     </div>
   );
 };
