@@ -1,4 +1,6 @@
 // app/api/upload/route.ts
+// app/api/upload/route.ts
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
