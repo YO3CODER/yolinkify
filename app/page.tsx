@@ -20,10 +20,6 @@ const truncateLink = (url: string, maxLenght = 20) => {
     : url;
 };
 
-
-
-
-
 const isValidURL = (url: string) => {
   try {
     const parsedUrl = new URL(url);
@@ -42,9 +38,9 @@ export default function Home() {
   const [theme2, setTheme2] = useState<string | null | undefined>(null);
   const [link, setLink] = useState<string>("");
   const [socialPseudo, setSocialPseudo] = useState<string>("");
+  const [socialDescription, setSocialDescription] = useState<string>(""); // État pour la description
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
   const [links, setLinks] = useState<SocialLink[]>([]);
-  const [socialDescription, setSocialDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
 
   const themes = [
@@ -109,7 +105,8 @@ export default function Home() {
     }
 
     try {
-      const newLink = await addSocialLink(email, title, link, socialPseudo);
+      // Ajouter la description lors de la création du lien
+      const newLink = await addSocialLink(email, title, link, socialPseudo, socialDescription);
       const modal = document.getElementById("social_links_form") as HTMLDialogElement;
       if (modal) modal.close();
 
@@ -117,12 +114,15 @@ export default function Home() {
         setLinks([...links, newLink]);
       }
 
+      // Réinitialiser tous les champs
       setLink("");
       setSocialPseudo("");
+      setSocialDescription(""); // Réinitialiser la description
       setTitle(socialLinksData[0].name);
-      toast.success("Lien ajouter avec succès 🥳 ");
+      toast.success("Lien ajouté avec succès 🥳 ");
     } catch (error) {
       console.error(error);
+      toast.error("Erreur lors de l'ajout du lien");
     }
   };
 
@@ -133,6 +133,7 @@ export default function Home() {
       toast.success("Lien supprimé");
     } catch {
       console.error(error);
+      toast.error("Erreur lors de la suppression");
     }
   };
 
@@ -173,15 +174,14 @@ export default function Home() {
 
   const handleConfirmTheme = async () =>{
     try {
-
       if(theme){
          await updateUserTheme(email , theme)
-        toast.success("Thème apliqué")
+        toast.success("Thème appliqué")
         setTheme2(theme)
       }
-    
-    }catch (error){
+    } catch (error){
       console.error(error)
+      toast.error("Erreur lors de l'application du thème");
     }
   }
 
@@ -193,31 +193,29 @@ export default function Home() {
         <div className="md:w-2/3">
           <div className="flex justify-between items-center bg-base-200 p-5 rounded-3xl">
             <div className="flex flex-wrap items-center gap-2">
-             <span className="inline-flex items-center gap-2 px-4 py-2 
+              <span className="inline-flex items-center gap-2 px-4 py-2 
                  rounded-full bg-gradient-to-r from-orange-500 to-red-500
                  text-white font-semibold text-sm
                  shadow-md ">
-  🔥 Ta page est prête 😎
-</span>
-
+                🔥 Ta page est prête 😎
+              </span>
 
               {pseudo && (
                 <Link
-  href={`/page/${pseudo}`}
-  target="_blank"
-  rel="noopener noreferrer"
-  className="hidden md:flex items-center gap-2
-             px-4 py-2 rounded-xl
-             font-bold text-sm
-             bg-base-200 text-base-content
-              hover:text-white
-             transition-all duration-300
-             shadow-sm hover:shadow-md"
->
-     <ExternalLink className="w-4 h-4" />
-  <span className="text-primary font-extrabold">{pseudo}</span>
-</Link>
-
+                  href={`/page/${pseudo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden md:flex items-center gap-2
+                           px-4 py-2 rounded-xl
+                           font-bold text-sm
+                           bg-base-200 text-base-content
+                           hover:text-white
+                           transition-all duration-300
+                           shadow-sm hover:shadow-md"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="text-primary font-extrabold">{pseudo}</span>
+                </Link>
               )}
 
               {pseudo && (
@@ -259,50 +257,65 @@ export default function Home() {
                 </button>
               </form>
 
-              <h3 className="font-bold text-lg">Nouveau lien </h3>
-              <p className="py-4">Ajouter vos liens publics </p>
+              <h3 className="font-bold text-lg">Nouveau lien</h3>
+              <p className="py-4">Ajouter vos liens publics</p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <select
-                  className="select select-bordered"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                >
-                  {socialLinksData.map(({ name }) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <select
+                    className="select select-bordered w-full"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                  >
+                    {socialLinksData.map(({ name }) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
 
-                <input
-                  type="text"
-                  placeholder="Entrez le pseudo social"
-                  className="input input-bordered w-full"
-                  value={socialPseudo}
-                  onChange={e => setSocialPseudo(e.target.value)}
-                />
+                  <input
+                    type="text"
+                    placeholder="Entrez le pseudo social"
+                    className="input input-bordered w-full"
+                    value={socialPseudo}
+                    onChange={e => setSocialPseudo(e.target.value)}
+                  />
+                </div>
 
                 {/* Champ Description */}
-<input
-  type="text"
-  placeholder="Entrez la description"
-  className="input input-bordered w-full mt-2"
-  value={socialDescription}
-  onChange={e => setSocialDescription(e.target.value)}
-/>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-semibold">Description</span>
+                    <span className="label-text-alt">(Optionnel)</span>
+                  </label>
+                  <textarea
+                    placeholder="Entrez une description pour votre lien..."
+                    className="textarea textarea-bordered w-full h-24"
+                    value={socialDescription}
+                    onChange={e => setSocialDescription(e.target.value)}
+                    rows={4}
+                  />
+                  <label className="label">
+                    <span className="label-text-alt">
+                      Vous pouvez inclure des URLs qui seront converties en liens cliquables
+                    </span>
+                  </label>
+                </div>
 
-                <input
-                  type="text"
-                  placeholder="Entrez l'URL"
-                  className="input input-bordered w-full"
-                  value={link}
-                  onChange={e => setLink(e.target.value)}
-                />
+                <div className="grid grid-cols-1 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Entrez l'URL"
+                    className="input input-bordered w-full"
+                    value={link}
+                    onChange={e => setLink(e.target.value)}
+                  />
 
-                <button className="btn btn-accent" onClick={handleAddLink}>
-                  Ajouter
-                </button>
+                  <button className="btn btn-accent w-full" onClick={handleAddLink}>
+                    Ajouter le lien
+                  </button>
+                </div>
               </div>
             </div>
           </dialog>
@@ -334,29 +347,27 @@ export default function Home() {
           {pseudo && theme && (
             <div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4 gap-2">
-  <select
-    className="select select-bordered w-full"
-    value={theme}
-    onChange={e => setTheme(e.target.value)}
-  >
-    {themes.map(themeOption => (
-      <option key={themeOption} value={themeOption}>
-        {themeOption}
-      </option>
-    ))}
-  </select>
+                <select
+                  className="select select-bordered w-full"
+                  value={theme}
+                  onChange={e => setTheme(e.target.value)}
+                >
+                  {themes.map(themeOption => (
+                    <option key={themeOption} value={themeOption}>
+                      {themeOption}
+                    </option>
+                  ))}
+                </select>
 
-  <button
-    className={`btn ${theme === theme2 ? 'btn-disabled' : 'btn-accent'} flex items-center justify-center`}
-    
-    disabled={theme === theme2}
-    title={theme === theme2 ? "Thème déjà appliqué" : "Appliquer le thème"}
-    onClick={handleConfirmTheme}
-  >
-    <Palette className="w-4 h-4" />
-  </button>
-</div>
-
+                <button
+                  className={`btn ${theme === theme2 ? 'btn-disabled' : 'btn-accent'} flex items-center justify-center`}
+                  disabled={theme === theme2}
+                  title={theme === theme2 ? "Thème déjà appliqué" : "Appliquer le thème"}
+                  onClick={handleConfirmTheme}
+                >
+                  <Palette className="w-4 h-4" />
+                </button>
+              </div>
 
               <Visualisation
                 socialLinks={links}
