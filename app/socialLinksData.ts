@@ -31,6 +31,7 @@ const socialLinksData = [
   // 🔥 Plateformes éducatives
   { name: "OpenClassrooms", root: "https://openclassrooms.com/", altRoot: "https://www.openclassrooms.com/"},
   { name: "Schoolavox", root: "https://schoolavox.com/", altRoot: "https://www.schoolavox.com/" },
+  { name: "Udemy", root: "https://www.udemy.com/", altRoot: "" },
 
   { name: "PDF", root: "", altRoot: "", fileType: "pdf" },
   { name: "Image", root: "", altRoot: "", fileType: "image" },
