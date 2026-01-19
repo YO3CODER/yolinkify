@@ -128,12 +128,7 @@ const UrlPreview = ({ url }: { url: string }) => {
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           className="absolute inset-0 w-full h-full"
-        />
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
-          <div className="flex items-center gap-2 text-white">    
-            <span className="text-sm font-medium">Vidéo YouTube</span>
-          </div>
-        </div>
+        />     
       </div>
     );
   }
