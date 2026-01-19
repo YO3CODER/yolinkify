@@ -1,6 +1,6 @@
 "use client";
 import { SocialLink } from '@prisma/client'
-import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, Download } from 'lucide-react'
+import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download } from 'lucide-react'
 import Link from 'next/link'
 import React, { FC, useState, useMemo, useEffect, useRef } from 'react'
 import { SocialIcon } from 'react-social-icons'
@@ -24,6 +24,7 @@ interface LinkComponentProps {
   onRemove?: (id: string) => void
   readonly?: boolean
   fetchLinks?: () => void
+  showDescription?: boolean // Nouvelle prop
 }
 
 /* ------------------ COULEURS ------------------ */
@@ -137,6 +138,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
   onRemove,
   readonly,
   fetchLinks,
+  showDescription = true, // Par défaut, afficher la description
 }) => {
   const [isActive, setIsActive] = useState(socialLink.active)
   const [isEditing, setIsEditing] = useState(false)
@@ -146,6 +148,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [useFileUpload, setUseFileUpload] = useState(false)
+  const [localShowDescription, setLocalShowDescription] = useState(showDescription) // État local pour contrôler l'affichage
   const [formData, setFormData] = useState({
     title: socialLink.title,
     url: socialLink.url,
@@ -155,6 +158,11 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const [clicks, setClicks] = useState(socialLink.clicks)
   const [borderColorIndex, setBorderColorIndex] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Synchroniser avec la prop showDescription
+  useEffect(() => {
+    setLocalShowDescription(showDescription)
+  }, [showDescription])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -403,31 +411,28 @@ const LinkComponent: FC<LinkComponentProps> = ({
     }
   }
 
-
-
   // Convertit les URLs dans le texte en liens cliquables
-const linkify = (text: string) => {
-  if (!text) return null;
+  const linkify = (text: string) => {
+    if (!text) return null;
 
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
 
-  return text.split(urlRegex).map((part, index) =>
-    urlRegex.test(part) ? (
-      <a
-        key={index}
-        href={part}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 underline hover:text-blue-800 break-all"
-      >
-        {part}
-      </a>
-    ) : (
-      part
-    )
-  );
-}
-
+    return text.split(urlRegex).map((part, index) =>
+      urlRegex.test(part) ? (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline hover:text-blue-800 break-all"
+        >
+          {part}
+        </a>
+      ) : (
+        part
+      )
+    );
+  }
 
   return (
     <div className="group relative">
@@ -525,6 +530,15 @@ const linkify = (text: string) => {
                   className="absolute top-0 left-0 w-full h-full rounded-lg"
                 />
               </div>
+            </div>
+          )}
+
+          {/* Affichage de la description en mode readonly */}
+          {socialLink.description && (
+            <div className="mb-4 bg-base-200/50 p-3 rounded-xl">
+              <p className="text-sm text-base-content whitespace-pre-wrap break-words">
+                {linkify(socialLink.description)}
+              </p>
             </div>
           )}
 
@@ -911,16 +925,41 @@ const linkify = (text: string) => {
                   </div>
                 )}
 
-                {/* Affichage de la description */}
-      
-              {/* Affichage de la description avec liens cliquables */}
-{formData.description && (
-  <p className="text-sm text-gray-600 mt-2 px-2 whitespace-pre-wrap break-words">
-    {linkify(formData.description)}
-  </p>
-)}
+                {/* Bouton pour afficher/cacher la description */}
+                {formData.description && (
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn btn-xs btn-ghost gap-1"
+                        onClick={() => setLocalShowDescription(!localShowDescription)}
+                      >
+                        {localShowDescription ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            <span className="text-xs">Cacher description</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            <span className="text-xs">Afficher description</span>
+                          </>
+                        )}
+                      </button>
+                      <span className="text-xs text-gray-500">
+                        {formData.description.length} caractères
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-
+                {/* Affichage de la description avec liens cliquables */}
+                {formData.description && localShowDescription && (
+                  <div className="mt-3 bg-base-200/50 p-3 rounded-xl border border-base-300">
+                    <p className="text-sm text-base-content whitespace-pre-wrap break-words">
+                      {linkify(formData.description)}
+                    </p>
+                  </div>
+                )}
 
                 <div className="tooltip" data-tip={formData.url}>
                   <Link
