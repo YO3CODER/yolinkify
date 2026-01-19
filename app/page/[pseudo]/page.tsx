@@ -139,7 +139,7 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
           <div className="mt-3 flex justify-end">
             <div className="flex items-center gap-1.5 text-xs font-medium opacity-80">
               <Zap className="w-3 h-3" />
-              <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
+              <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}🔥</span>
             </div>
           </div>
         )}
@@ -293,9 +293,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   <Avatar pseudo={pseudo} />
                 </div>
                 
-                <div>
-                  <h1 className="text-2xl font-bold">@{pseudo}</h1>
-                </div>
+               
 
                 {/* Caractéristiques améliorées */}
                 {links.length > 0 && (

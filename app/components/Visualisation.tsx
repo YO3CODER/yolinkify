@@ -122,19 +122,9 @@ const Visualisation: React.FC<VisualisationProps> = ({
                 {/* Toolbar avec contrôles */}
                 <div className="mockup-browser-toolbar bg-gradient-to-r from-base-300 to-base-200">
                     <div className="flex items-center justify-between w-full px-4 py-3">
-                        <div className="flex items-center gap-2 flex-1">
-                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                        </div>
-                        
+                       
                         <div className="flex-1 flex justify-center">
-                            <div className="bg-base-100 px-4 py-1.5 rounded-full flex items-center gap-2 max-w-md w-full">
-                                <ExternalLink className="w-4 h-4 text-primary" />
-                                <span className="text-sm font-medium truncate">
-                                    {truncateLink(`yolinkify.vercel.app${url}`)}
-                                </span>
-                            </div>
+                          
                         </div>
                         
                         <div className="flex items-center gap-2 flex-1 justify-end">
@@ -147,16 +137,7 @@ const Visualisation: React.FC<VisualisationProps> = ({
                                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                             </button>
                             
-                            <button
-                                onClick={() => setShowDescriptions(!showDescriptions)}
-                                className="btn btn-ghost btn-xs tooltip"
-                                data-tip={showDescriptions ? "Cacher descriptions" : "Afficher descriptions"}
-                            >
-                                {showDescriptions ? 
-                                    <EyeOff className="w-4 h-4" /> : 
-                                    <Eye className="w-4 h-4" />
-                                }
-                            </button>
+                           
                             
                             <button
                                 onClick={() => setAutoPlayVideo(!autoPlayVideo)}
@@ -242,6 +223,7 @@ const Visualisation: React.FC<VisualisationProps> = ({
                                                         <div className="p-3 bg-base-200">
                                                             <h4 className="font-bold text-sm truncate">{youtubePreview.title}</h4>
                                                             <p className="text-xs opacity-70 truncate">{youtubePreview.channel}</p>
+                                                            
                                                         </div>
                                                     </div>
                                                     
