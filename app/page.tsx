@@ -130,9 +130,7 @@ const UrlPreview = ({ url }: { url: string }) => {
           className="absolute inset-0 w-full h-full"
         />
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
-          <div className="flex items-center gap-2 text-white">
-            <div className="w-6 h-6 bg-red-600 rounded flex items-center justify-center">
-            </div>
+          <div className="flex items-center gap-2 text-white">    
             <span className="text-sm font-medium">Vidéo YouTube</span>
           </div>
         </div>
