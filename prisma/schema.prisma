@@ -29,4 +29,16 @@ model SocialLink {
   description String?
   fileType    String?  // pdf, image, url
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes       Like[]   // Ajoutez cette ligne
+}
+
+model Like {
+  id          String   @id @default(cuid())
+  socialLinkId String
+  userId      String
+  createdAt   DateTime @default(now())
+  socialLink  SocialLink @relation(fields: [socialLinkId], references: [id], onDelete: Cascade)
+  
+  @@unique([socialLinkId, userId])
+  @@map("likes")
 }

@@ -258,12 +258,10 @@ const Visualisation: React.FC<VisualisationProps> = ({
                                 <div className="pt-4 border-t border-base-300">
                                     <div className="flex items-center justify-between text-sm">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                            <span className="opacity-70">En ligne</span>
+                                           
+
                                         </div>
-                                        <div className="opacity-70">
-                                            Mis à jour il y a quelques instants
-                                        </div>
+                                       
                                     </div>
                                 </div>
                             </>

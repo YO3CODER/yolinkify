@@ -1,12 +1,13 @@
 "use client";
 import { SocialLink } from '@prisma/client'
-import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download } from 'lucide-react'
+import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download, Heart } from 'lucide-react'
 import Link from 'next/link'
 import React, { FC, useState, useMemo, useEffect, useRef } from 'react'
 import { SocialIcon } from 'react-social-icons'
-import { toggleSocialLinkActive, updateSocialdLink, incrementClickCount } from '../server'
+import { toggleSocialLinkActive, updateSocialdLink, incrementClickCount, toggleLike, getLikesCount, hasUserLiked } from '../server'
 import toast from 'react-hot-toast'
 import socialLinksData from '../socialLinksData'
+import { useUser } from '@clerk/nextjs'
 
 // ----------------------------------------------------------------------------
 
@@ -20,11 +21,14 @@ const getYouTubeEmbedUrl = (url: string) => {
 // -------------------------------------------------------------
 
 interface LinkComponentProps {
-  socialLink: SocialLink
+  socialLink: SocialLink & {
+    likesCount?: number
+    isLikedByCurrentUser?: boolean
+  }
   onRemove?: (id: string) => void
   readonly?: boolean
   fetchLinks?: () => void
-  showDescription?: boolean // Nouvelle prop
+  showDescription?: boolean
 }
 
 /* ------------------ COULEURS ------------------ */
@@ -138,7 +142,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
   onRemove,
   readonly,
   fetchLinks,
-  showDescription = true, // Par défaut, afficher la description
+  showDescription = true,
 }) => {
   const [isActive, setIsActive] = useState(socialLink.active)
   const [isEditing, setIsEditing] = useState(false)
@@ -148,7 +152,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [useFileUpload, setUseFileUpload] = useState(false)
-  const [localShowDescription, setLocalShowDescription] = useState(showDescription) // État local pour contrôler l'affichage
+  const [localShowDescription, setLocalShowDescription] = useState(showDescription)
   const [formData, setFormData] = useState({
     title: socialLink.title,
     url: socialLink.url,
@@ -157,6 +161,14 @@ const LinkComponent: FC<LinkComponentProps> = ({
   })
   const [clicks, setClicks] = useState(socialLink.clicks)
   const [borderColorIndex, setBorderColorIndex] = useState(0)
+  
+  // États pour les likes
+  const [isLiked, setIsLiked] = useState(socialLink.isLikedByCurrentUser || false)
+  const [likesCount, setLikesCount] = useState(socialLink.likesCount || 0)
+  const [isLiking, setIsLiking] = useState(false)
+  
+  const { user } = useUser()
+  const currentUserId = user?.id
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Synchroniser avec la prop showDescription
@@ -170,6 +182,20 @@ const LinkComponent: FC<LinkComponentProps> = ({
     }, 4000)
     return () => clearInterval(interval)
   }, [])
+
+  // Charger les données de likes au montage
+  useEffect(() => {
+    const loadLikeData = async () => {
+      if (currentUserId) {
+        const liked = await hasUserLiked(socialLink.id, currentUserId)
+        setIsLiked(liked)
+      }
+      const count = await getLikesCount(socialLink.id)
+      setLikesCount(count)
+    }
+    
+    loadLikeData()
+  }, [socialLink.id, currentUserId])
 
   // 🎨 couleur dynamique basée sur l'ID pour consistance
   const colorIndex = useMemo(() => 
@@ -208,6 +234,32 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const isUploadedFile = useMemo(() => {
     return formData.url.startsWith('/uploads/') || selectedFile
   }, [formData.url, selectedFile])
+
+  const handleToggleLike = async () => {
+    if (!currentUserId) {
+      toast.error('Vous devez être connecté pour liker')
+      return
+    }
+
+    if (isLiking) return
+
+    setIsLiking(true)
+    try {
+      const result = await toggleLike(socialLink.id, currentUserId)
+      
+      if (result.success) {
+        setIsLiked(!isLiked)
+        setLikesCount(result.likesCount || 0)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      console.error('Erreur lors du like:', error)
+      toast.error('Erreur lors du traitement du like')
+    } finally {
+      setIsLiking(false)
+    }
+  }
 
   const handleFileUpload = async () => {
     if (!selectedFile) return
@@ -395,20 +447,43 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const handleRemove = async () => {
     if (!onRemove || isDeleting) return
     
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer ce lien ?')) {
-      return
-    }
-
-    setIsDeleting(true)
-    try {
-      await onRemove(socialLink.id)
-      toast.success('Lien supprimé avec succès')
-    } catch (error) {
-      console.error(error)
-      toast.error('Erreur lors de la suppression')
-    } finally {
-      setIsDeleting(false)
-    }
+    // Remplacer window.confirm par un toast de confirmation
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-2">
+        <div className="font-semibold text-base">
+          Êtes-vous sûr de vouloir supprimer ce lien ?
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => toast.dismiss(t.id)}
+          >
+            Annuler
+          </button>
+          <button
+            className="btn btn-sm btn-error text-white"
+            onClick={async () => {
+              toast.dismiss(t.id);
+              setIsDeleting(true);
+              try {
+                await onRemove(socialLink.id);
+                toast.success('Lien supprimé avec succès');
+              } catch (error) {
+                console.error(error);
+                toast.error('Erreur lors de la suppression');
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+          >
+            Supprimer
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: Infinity,
+      position: 'top-center',
+    });
   }
 
   // Convertit les URLs dans le texte en liens cliquables
@@ -566,6 +641,29 @@ const LinkComponent: FC<LinkComponentProps> = ({
               </span>
             </div>
           )}
+
+          {/* Section likes en mode readonly */}
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-base-300">
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={handleToggleLike}
+                disabled={!currentUserId || readonly}
+                title={!currentUserId ? "Connectez-vous pour liker" : ""}
+              >
+                <Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+              </button>
+              <span className="text-sm text-gray-600">
+                {likesCount} like{likesCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            
+            {clicks > 0 && (
+              <div className="text-sm text-gray-600">
+                {clicks} clic{clicks !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className={`flex flex-col w-full p-4 sm:p-6 rounded-3xl gap-4 transition-all duration-300 overflow-hidden
@@ -985,31 +1083,37 @@ const LinkComponent: FC<LinkComponentProps> = ({
                 </div>
               </div>
 
-              {/* Footer avec stats et actions */}
+              {/* Footer avec stats, likes et actions */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 border-t border-base-300 gap-4 sm:gap-0">
-                {clicks > 0 ? (
-                  <div className="tooltip" data-tip="Nombre de clics">
-                    <div className={`flex items-center gap-2 px-3 py-2 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
-                      <ChartColumnIncreasing className="w-4 h-4" />
-                      <span className="font-bold text-lg">
-                        {clicks}
-                      </span>
-                      {isYouTubeUrl(formData.url) && (
-                        <Link 
-                          href={formData.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="ml-2"
-                          onClick={isActive ? handleIncrementClick : undefined}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </Link>
+                <div className="flex items-center gap-4">
+                  {/* Bouton like */}
+                  <div className="tooltip" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "Retirer le like" : "Ajouter un like"}>
+                    <button
+                      className="btn btn-ghost btn-sm gap-2"
+                      onClick={handleToggleLike}
+                      disabled={isLiking || !currentUserId}
+                    >
+                      {isLiking ? (
+                        <span className="loading loading-spinner loading-xs" />
+                      ) : (
+                        <Heart className={`w-4 h-4 transition-all ${isLiked ? 'fill-red-500 text-red-500 animate-pulse' : ''}`} />
                       )}
-                    </div>
+                      <span className={isLiked ? 'text-red-500 font-semibold' : ''}>
+                        {likesCount}
+                      </span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="flex-shrink-0" /> 
-                )}
+
+                  {/* Compteur de clics */}
+                  {clicks > 0 && (
+                    <div className="tooltip" data-tip="Nombre de clics">
+                      <div className={`flex items-center gap-2 px-3 py-2 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
+                        <ChartColumnIncreasing className="w-4 h-4" />
+                        <span className="font-bold text-lg">{clicks}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <button

@@ -5,13 +5,12 @@ import Wrapper from "./components/Wrapper";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState, useRef } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import { addSocialLink, getSocialLinks, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
+import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
 import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File } from "lucide-react";
 import socialLinksData from "./socialLinksData";
 import { SocialLink } from "@prisma/client";
 import EmptyState from "./components/EmptyState";
 import LinkComponent from "./components/LinkComponent";
-import error from "next/error";
 import Visualisation from "./components/Visualisation";
 
 const truncateLink = (url: string, maxLenght = 20) => {
@@ -184,9 +183,15 @@ const UrlPreview = ({ url }: { url: string }) => {
   return null;
 };
 
+interface SocialLinkWithLikes extends SocialLink {
+  likesCount?: number;
+  isLikedByCurrentUser?: boolean;
+}
+
 export default function Home() {
   const { user } = useUser();
   const email = user?.primaryEmailAddress?.emailAddress as string;
+  const currentUserId = user?.id;
 
   const [pseudo, setPseudo] = useState<string | null | undefined>(null);
   const [theme, setTheme] = useState<string | null | undefined>(null);
@@ -195,8 +200,8 @@ export default function Home() {
   const [socialPseudo, setSocialPseudo] = useState<string>("");
   const [socialDescription, setSocialDescription] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
-  const [links, setLinks] = useState<SocialLink[]>([]);
-  const [filteredLinks, setFilteredLinks] = useState<SocialLink[]>([]);
+  const [links, setLinks] = useState<SocialLinkWithLikes[]>([]);
+  const [filteredLinks, setFilteredLinks] = useState<SocialLinkWithLikes[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showDescription, setShowDescription] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -429,8 +434,7 @@ export default function Home() {
     try {
       await removeSocialLink(email, linkId);
       setLinks(links.filter(link => link.id !== linkId));
-      toast.success("Lien supprimé");
-    } catch {
+    } catch (error) {
       console.error(error);
       toast.error("Erreur lors de la suppression");
     }
@@ -445,7 +449,8 @@ export default function Home() {
         setTheme2(userInfo.theme)
       }
 
-      const fetchedLinks = await getSocialLinks(email);
+      // Utiliser la nouvelle fonction qui inclut les likes
+      const fetchedLinks = await getSocialLinksWithLikes(email, currentUserId);
       if (fetchedLinks) {
         setLinks(fetchedLinks);
         setFilteredLinks(fetchedLinks);
@@ -460,7 +465,7 @@ export default function Home() {
     if (email) {
       fetchLinks();
     }
-  }, [email]);
+  }, [email, currentUserId]);
 
   const copyToClipboard = () => {
     if (!pseudo) return;
@@ -484,6 +489,9 @@ export default function Home() {
       toast.error("Erreur lors de l'application du thème");
     }
   }
+
+  // Calculer le total des likes
+  const totalLikes = links.reduce((total, link) => total + (link.likesCount || 0), 0);
 
   return (
     <Wrapper>
@@ -530,14 +538,23 @@ export default function Home() {
               )}
             </div>
 
-            <button
-              className="btn btn-sm-ghost"
-              onClick={copyToClipboard}
-              disabled={!pseudo}
-            >
-              <Copy className="w-4 h-4" />
-              Copie
-            </button>
+            <div className="flex items-center gap-2">
+              {totalLikes > 0 && (
+                <div className="tooltip" data-tip={`Total des likes: ${totalLikes}`}>
+                  <div className="badge badge-primary gap-1">
+                    <span className="text-sm">❤️ {totalLikes}</span>
+                  </div>
+                </div>
+              )}
+              <button
+                className="btn btn-sm-ghost"
+                onClick={copyToClipboard}
+                disabled={!pseudo}
+              >
+                <Copy className="w-4 h-4" />
+                Copie
+              </button>
+            </div>
           </div>
 
           {/* Barre de recherche et bouton pour afficher/cacher la description */}
@@ -651,7 +668,7 @@ export default function Home() {
                   <textarea
                     placeholder="Entrez une description pour votre lien..."
                     className="textarea textarea-bordered w-full h-24"
-                    value={socialDescription || ""} // CORRECTION : valeur par défaut
+                    value={socialDescription || ""}
                     onChange={(e) => setSocialDescription(e.target.value)}
                     rows={3}
                   />
@@ -746,7 +763,7 @@ export default function Home() {
                         type="url"
                         placeholder="https://..."
                         className="input input-bordered w-full"
-                        value={link || ""} // CORRECTION : valeur par défaut
+                        value={link || ""}
                         onChange={(e) => setLink(e.target.value)}
                       />
                       
@@ -845,7 +862,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4 gap-2">
                 <select
                   className="select select-bordered w-full"
-                  value={theme || ""} // CORRECTION : valeur par défaut
+                  value={theme || ""}
                   onChange={(e) => setTheme(e.target.value)}
                 >
                   {themes.map(themeOption => (
@@ -865,10 +882,24 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* Stats des likes */}
+              {totalLikes > 0 && (
+                <div className="stats shadow bg-base-200 mb-4">
+                  <div className="stat">
+                    <div className="stat-figure text-primary">
+                      <span className="text-2xl">❤️</span>
+                    </div>
+                    <div className="stat-title">Total des likes</div>
+                    <div className="stat-value">{totalLikes}</div>
+                    <div className="stat-desc">sur {links.length} liens</div>
+                  </div>
+                </div>
+              )}
+
               <Visualisation
                 socialLinks={links}
                 pseudo={pseudo}
-                theme={theme || "retro"} // CORRECTION : valeur par défaut
+                theme={theme || "retro"}
               />
             </div>
           )}
