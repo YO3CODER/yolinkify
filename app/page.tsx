@@ -505,7 +505,7 @@ export default function Home() {
                  rounded-full bg-gradient-to-r from-blue-200 to-blue-500
                  text-white font-semibold text-sm
                  shadow-md ">
-                🔥 Ta page est prête 😎
+                🔥Page : 
               </span>
 
               {pseudo && (
@@ -541,7 +541,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
               {totalLikes > 0 && (
                 <div className="tooltip" data-tip={`Total des likes: ${totalLikes}`}>
-                  <div className="badge badge-primary gap-1">
+                  <div className="badge badge-primary gap-1" >
                     <span className="text-sm">❤️ {totalLikes}</span>
                   </div>
                 </div>
