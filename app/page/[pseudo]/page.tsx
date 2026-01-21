@@ -6,7 +6,7 @@ import LinkComponent from "@/app/components/LinkComponent"
 import Logo from "@/app/components/Logo"
 import { getSocialLinks, getUserInfo } from "@/app/server"
 import { SocialLink } from "@prisma/client"
-import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon } from "lucide-react"
+import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe } from "lucide-react"
 import React, { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import Fuse from "fuse.js"
@@ -40,7 +40,7 @@ const YoutubePreview = ({ url }: { url: string }) => {
   if (!videoId) return null
 
   return (
-    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-base-300 mb-4">
+    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-base-300 mb-4 shadow-sm">
       <iframe
         src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
         title="Prévisualisation YouTube"
@@ -90,13 +90,18 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
       )}
 
       {/* Carte du lien */}
-      <div className={`${bgColors[colorIndex]} p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow transition-shadow duration-200`}>
+      <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
         {/* En-tête avec titre et bouton info */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
-              <h3 className="font-semibold text-base truncate">{link.title}</h3>
-              <span className="text-xs opacity-60 truncate">
+        <div className="flex items-center justify-between mb-3 lg:mb-4">
+          <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-white/50 dark:bg-black/30 flex items-center justify-center">
+                <Globe className="w-4 h-4 lg:w-5 lg:h-5 opacity-70" />
+              </div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
+              <span className="text-xs opacity-60 truncate block">
                 @{link.pseudo}
               </span>
             </div>
@@ -106,17 +111,17 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
           {link.description && (
             <button
               onClick={() => setShowDescription(!showDescription)}
-              className="btn btn-ghost btn-circle btn-xs hover:bg-primary/10"
+              className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors"
               aria-label="Afficher la description"
             >
-              <Info className={`w-3.5 h-3.5 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+              <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
             </button>
           )}
         </div>
 
         {/* Description (visible uniquement si cliqué) */}
         {showDescription && link.description && (
-          <div className="mb-4 animate-fadeIn">
+          <div className="mb-3 lg:mb-4 animate-fadeIn">
             <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
               <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
                 {link.description}
@@ -126,7 +131,7 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
         )}
 
         {/* Lien principal */}
-        <div className="mt-4">
+        <div className="mt-3 lg:mt-4">
           <LinkComponent 
             socialLink={link} 
             readonly 
@@ -137,9 +142,9 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
         {/* Stats */}
         {link.clicks > 0 && (
           <div className="mt-3 flex justify-end">
-            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80">
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
               <Zap className="w-3 h-3" />
-              <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}🔥</span>
+              <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
             </div>
           </div>
         )}
@@ -156,16 +161,16 @@ const StatsCard = ({ value, label, icon: Icon, color = "primary" }: {
   color?: "primary" | "secondary" | "accent"
 }) => {
   const colorClasses = {
-    primary: 'bg-primary/10 text-primary border-primary/20',
-    secondary: 'bg-secondary/10 text-secondary border-secondary/20',
-    accent: 'bg-accent/10 text-accent border-accent/20'
+    primary: 'bg-gradient-to-br from-primary/10 to-primary/5 text-primary border-primary/20',
+    secondary: 'bg-gradient-to-br from-secondary/10 to-secondary/5 text-secondary border-secondary/20',
+    accent: 'bg-gradient-to-br from-accent/10 to-accent/5 text-accent border-accent/20'
   }
 
   return (
-    <div className={`flex flex-col items-center justify-center p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-5 h-5" />
-        <div className="text-2xl font-bold">{value}</div>
+    <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
+      <div className="flex items-center gap-2 mb-1 lg:mb-2">
+        <Icon className="w-4 h-4 lg:w-5 lg:h-5" />
+        <div className="text-xl lg:text-2xl font-bold">{value}</div>
       </div>
       <div className="text-xs opacity-80">{label}</div>
     </div>
@@ -276,26 +281,31 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50">
-      <div className="container mx-auto px-4 py-8 max-w-xl">
-        <div className="flex flex-col items-center space-y-8">
-          {/* Logo */}
-          <div className="mb-4">
-            <Logo />
-          </div>
-
-          {pseudo ? (
-            <>
-              {/* Header avec Avatar */}
-              <div className="w-full text-center space-y-6">
-                <div className="relative inline-block">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
-                  <Avatar pseudo={pseudo} />
+    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50 overflow-hidden">
+      <div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)]">
+          {/* Sidebar pour grands écrans - Scroll indépendant */}
+          <div className="lg:w-1/3 lg:h-full lg:overflow-y-auto lg:pr-2">
+            <div className="space-y-6 lg:pb-8">
+              {/* Logo et Avatar */}
+              <div className="bg-base-100 rounded-2xl p-5 lg:p-6 border border-base-300 shadow-sm">
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="mb-2">
+                    <Logo />
+                  </div>
+                  
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
+                    <Avatar pseudo={pseudo || ""} />
+                  </div>
+                  
+                  <div className="text-center">
+                    <h1 className="text-xl lg:text-2xl font-bold">{pseudo}</h1>
+                    <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
+                  </div>
                 </div>
-                
-               
 
-                {/* Caractéristiques améliorées */}
+                {/* Caractéristiques */}
                 {links.length > 0 && (
                   <div className="grid grid-cols-3 gap-3 mt-6">
                     <StatsCard 
@@ -318,37 +328,95 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                     />
                   </div>
                 )}
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 mt-6">
+                  <a href="/sign-up" className="btn btn-outline btn-sm w-full">
+                    <UserPlus className="w-4 h-4" />
+                    Créer votre page
+                  </a>
+                  <a href="/sign-in" className="btn btn-primary btn-sm w-full">
+                    <LogIn className="w-4 h-4" />
+                    Gérer vos liens
+                  </a>
+                </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-3 justify-center">
-                <a href="/sign-up" className="btn btn-outline btn-sm px-4">
-                  <UserPlus className="w-4 h-4" />
-                  Créer votre page
-                </a>
+              {/* Filtres */}
+              <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    Filtres & Tri
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setShowOnlyWithDescription(!showOnlyWithDescription)}
+                      className={`btn btn-sm w-full justify-start gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
+                    >
+                      {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
+                    </button>
 
-                <a href="/sign-in" className="btn btn-primary btn-sm px-4">
-                  <LogIn className="w-4 h-4" />
-                  Gérer vos liens
-                </a>
+                    <select
+                      className="select select-sm select-bordered w-full"
+                      value={activeFilter}
+                      onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active')}
+                    >
+                      <option value="all">Tous les liens</option>
+                      <option value="active">Liens actifs uniquement</option>
+                    </select>
+
+                    <select
+                      className="select select-sm select-bordered w-full"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as 'clicks' | 'title' | 'recent')}
+                    >
+                      <option value="recent">Plus récents</option>
+                      <option value="clicks">Plus populaires</option>
+                      <option value="title">Ordre alphabétique</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
+              {/* Indication pour les descriptions */}
+              {linksWithDescription > 0 && (
+                <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-4 border border-primary/10">
+                  <div className="flex items-center gap-2 text-primary">
+                    <Info className="w-4 h-4" />
+                    <div className="text-sm">
+                      <span className="font-semibold">{linksWithDescription} lien{linksWithDescription > 1 ? 's' : ''}</span> avec détails
+                    </div>
+                  </div>
+                  <p className="text-xs opacity-70 mt-1">
+                    Cliquez sur l'icône ℹ️ pour voir les détails
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Contenu principal - Scroll indépendant */}
+          <div className="lg:w-2/3 lg:h-full lg:overflow-y-auto lg:pl-2">
+            <div className="space-y-6 lg:pb-8">
               {/* 🔍 RECHERCHE */}
               {links.length > 0 && (
-                <div className="w-full">
+                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 opacity-50" />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 lg:w-5 lg:h-5 opacity-50" />
                     <input
                       type="text"
-                      className="w-full pl-10 pr-10 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      placeholder="Rechercher un lien..."
+                      className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm lg:text-base"
+                      placeholder="Rechercher un lien par titre, pseudo ou description..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />
                     {search && (
                       <button
                         onClick={() => setSearch("")}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
                       >
                         ✕
                       </button>
@@ -357,51 +425,23 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 </div>
               )}
 
-              {/* Barre de contrôle */}
-              <div className="w-full space-y-3">
-                {/* Boutons de filtres */}
-                <div className="flex flex-wrap gap-2 justify-center">
-                  <button
-                    onClick={() => setShowOnlyWithDescription(!showOnlyWithDescription)}
-                    className={`btn btn-sm gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
-                  >
-                    {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
-                  </button>
-
-                  <select
-                    className="select select-sm select-bordered"
-                    value={activeFilter}
-                    onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active')}
-                  >
-                    <option value="all">Tous les liens</option>
-                    <option value="active">Liens actifs uniquement</option>
-                  </select>
-
-                  <select
-                    className="select select-sm select-bordered"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'clicks' | 'title' | 'recent')}
-                  >
-                    <option value="recent">Plus récents</option>
-                    <option value="clicks">Plus populaires</option>
-                    <option value="title">Ordre alphabétique</option>
-                  </select>
+              {/* Header mobile */}
+              <div className="lg:hidden">
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
+                    <Avatar pseudo={pseudo || ""} />
+                  </div>
+                  
+                  <div className="text-center">
+                    <h1 className="text-xl font-bold">{pseudo}</h1>
+                    <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
+                  </div>
                 </div>
               </div>
 
-              {/* Indication pour les descriptions */}
-              {linksWithDescription > 0 && (
-                <div className="text-center">
-                  <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs border border-primary/20">
-                    <Info className="w-3 h-3" />
-                    {linksWithDescription} lien{linksWithDescription > 1 ? 's' : ''} avec détails
-                  </div>
-                </div>
-              )}
-
               {/* 🔗 LIENS */}
-              <div className="w-full space-y-6">
+              <div className="space-y-4 lg:space-y-5">
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-12">
                     <span className="loading loading-spinner loading-lg text-primary mb-4"></span>
@@ -409,21 +449,26 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   </div>
                 ) : processedLinks.length > 0 ? (
                   <>
-                    <div className="text-center">
-                      <h2 className="text-lg font-semibold">
-                        Liens disponibles ({processedLinks.length})
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-lg lg:text-xl font-semibold">
+                        Liens disponibles 
+                        <span className="ml-2 badge badge-primary badge-sm">
+                          {processedLinks.length}
+                        </span>
                       </h2>
-                      <p className="text-sm opacity-70 mt-1">
-                        Cliquez sur l'icône ℹ️ pour voir les détails
-                      </p>
+                      <div className="text-xs opacity-70 hidden lg:block">
+                        {search && `Résultats pour : "${search}"`}
+                      </div>
                     </div>
                     
-                    {processedLinks.map(link => (
-                      <LinkWithDescription key={link.id} link={link} />
-                    ))}
+                    <div className="grid gap-4 lg:gap-5">
+                      {processedLinks.map(link => (
+                        <LinkWithDescription key={link.id} link={link} />
+                      ))}
+                    </div>
                   </>
                 ) : (
-                  <div className="text-center py-12">
+                  <div className="text-center py-12 bg-base-100 rounded-2xl border border-base-300">
                     <EmptyState
                       IconComponent="Link"
                       message={
@@ -445,44 +490,31 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
               </div>
 
               {/* Footer CTA */}
-              <div className="w-full mt-12 pt-8 border-t border-base-300">
-                <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-6 text-center border border-primary/10">
-                  <div className="flex items-center justify-center gap-2 mb-3">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    <h3 className="font-semibold text-lg">Créez votre page gratuite</h3>
+              <div className="mt-8 lg:mt-12 pt-6 lg:pt-8 border-t border-base-300">
+                <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-5 lg:p-6 text-center border border-primary/10">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 lg:w-6 lg:h-6 text-primary" />
+                      <h3 className="font-semibold text-lg lg:text-xl">Créez votre page gratuite</h3>
+                    </div>
+                    <p className="text-sm lg:text-base opacity-80 max-w-md">
+                      Rassemblez tous vos liens sociaux en une seule page élégante
+                    </p>
+                    <div className="flex gap-3 mt-2">
+                      <a href="/sign-up" className="btn btn-primary btn-sm lg:btn-md px-4 lg:px-6">
+                        <UserPlus className="w-4 h-4" />
+                        Commencer maintenant
+                      </a>
+                      <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
+                        <LogIn className="w-4 h-4" />
+                        Se connecter
+                      </a>
+                    </div>
                   </div>
-                  <p className="text-sm opacity-80 mb-4">
-                    Rassemblez tous vos liens sociaux en une seule page élégante
-                  </p>
-                  <a href="/sign-up" className="btn btn-primary px-6">
-                    <UserPlus className="w-4 h-4" />
-                    Commencer maintenant
-                  </a>
-                </div>
-              </div>
-            </>
-          ) : (
-            /* 404 */
-            <div className="flex flex-col items-center justify-center min-h-[60vh]">
-              <div className="bg-base-100 p-8 rounded-2xl shadow-sm border border-base-300 max-w-md text-center space-y-4">
-                <h1 className="text-5xl font-bold text-error">404</h1>
-                <div>
-                  <p className="text-lg font-semibold">Page non trouvée</p>
-                  <p className="text-sm opacity-70 mt-1">
-                    Cette page n'existe pas ou a été supprimée
-                  </p>
-                </div>
-                <div className="flex gap-3 justify-center pt-2">
-                  <a href="/" className="btn btn-primary btn-sm">
-                    ← Retour à l'accueil
-                  </a>
-                  <a href="/sign-up" className="btn btn-outline btn-sm">
-                    Créer une page
-                  </a>
                 </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
