@@ -172,7 +172,7 @@ const Visualisation: React.FC<VisualisationProps> = ({
                 >
                     {/* Avatar avec effets */}
                     <div className="relative group">
-                        <div className="absolute -inset-2 bg-gradient-to-r from-primary to-secondary rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <div className="absolute -inset-2 secondary rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
                         <Avatar pseudo={pseudo} />
                     </div>
                     
