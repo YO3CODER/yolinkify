@@ -281,14 +281,206 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50 overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50">
       <div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)]">
-          {/* Sidebar pour grands écrans - Scroll indépendant */}
-          <div className="lg:w-1/3 lg:h-full lg:overflow-y-auto lg:pr-2">
-            <div className="space-y-6 lg:pb-8">
+        {/* MODE MOBILE - Layout vertical avec scroll natif */}
+        <div className="lg:hidden">
+          {/* Header mobile */}
+          <div className="sticky top-0 z-10 bg-base-100/80 backdrop-blur-sm pb-4 mb-6">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
+                <Avatar pseudo={pseudo || ""} />
+              </div>
+              
+              <div className="text-center">
+                <h1 className="text-xl font-bold">{pseudo}</h1>
+                <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats mobiles */}
+          {links.length > 0 && (
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <StatsCard 
+                value={links.length} 
+                label="Liens" 
+                icon={LinkIcon} 
+                color="primary"
+              />
+              <StatsCard 
+                value={totalClicks} 
+                label="Clics" 
+                icon={Zap} 
+                color="secondary"
+              />
+              <StatsCard 
+                value={linksWithDescription} 
+                label="Détails" 
+                icon={Info} 
+                color="accent"
+              />
+            </div>
+          )}
+
+          {/* Filtres mobiles */}
+          <div className="bg-base-100 rounded-2xl p-4 border border-base-300 shadow-sm mb-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Filtres & Tri
+              </h3>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => setShowOnlyWithDescription(!showOnlyWithDescription)}
+                  className={`btn btn-sm w-full justify-start gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
+                >
+                  {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
+                </button>
+
+                <select
+                  className="select select-sm select-bordered w-full"
+                  value={activeFilter}
+                  onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active')}
+                >
+                  <option value="all">Tous les liens</option>
+                  <option value="active">Liens actifs uniquement</option>
+                </select>
+
+                <select
+                  className="select select-sm select-bordered w-full"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as 'clicks' | 'title' | 'recent')}
+                >
+                  <option value="recent">Plus récents</option>
+                  <option value="clicks">Plus populaires</option>
+                  <option value="title">Ordre alphabétique</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Indication pour les descriptions mobile */}
+          {linksWithDescription > 0 && (
+            <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-4 border border-primary/10 mb-6">
+              <div className="flex items-center gap-2 text-primary">
+                <Info className="w-4 h-4" />
+                <div className="text-sm">
+                  <span className="font-semibold">{linksWithDescription} lien{linksWithDescription > 1 ? 's' : ''}</span> avec détails
+                </div>
+              </div>
+              <p className="text-xs opacity-70 mt-1">
+                Cliquez sur l'icône ℹ️ pour voir les détails
+              </p>
+            </div>
+          )}
+
+          {/* Recherche mobile */}
+          {links.length > 0 && (
+            <div className="bg-base-100 rounded-2xl p-4 border border-base-300 shadow-sm mb-6">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 opacity-50" />
+                <input
+                  type="text"
+                  className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm"
+                  placeholder="Rechercher un lien..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Liens mobiles */}
+          <div className="space-y-4">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <span className="loading loading-spinner loading-lg text-primary mb-4"></span>
+                <p className="text-sm opacity-70">Chargement des liens...</p>
+              </div>
+            ) : processedLinks.length > 0 ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold">
+                    Liens disponibles 
+                    <span className="ml-2 badge badge-primary badge-sm">
+                      {processedLinks.length}
+                    </span>
+                  </h2>
+                </div>
+                
+                <div className="space-y-4">
+                  {processedLinks.map(link => (
+                    <LinkWithDescription key={link.id} link={link} />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-12 bg-base-100 rounded-2xl border border-base-300">
+                <EmptyState
+                  IconComponent="Link"
+                  message={
+                    search
+                      ? "Aucun lien trouvé pour cette recherche"
+                      : "Aucun lien disponible pour le moment"
+                  }
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="btn btn-ghost btn-sm mt-4"
+                  >
+                    Effacer la recherche
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CTA mobile */}
+          <div className="mt-8 pt-6 border-t border-base-300">
+            <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-5 text-center border border-primary/10">
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold text-lg">Créez votre page gratuite</h3>
+                </div>
+                <p className="text-sm opacity-80">
+                  Rassemblez tous vos liens sociaux en une seule page élégante
+                </p>
+                <div className="flex gap-3 mt-2">
+                  <a href="/sign-up" className="btn btn-primary btn-sm px-4">
+                    <UserPlus className="w-4 h-4" />
+                    Commencer
+                  </a>
+                  <a href="/sign-in" className="btn btn-outline btn-sm px-4">
+                    <LogIn className="w-4 h-4" />
+                    Connexion
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* MODE DESKTOP - Layout horizontal avec scroll indépendant */}
+        <div className="hidden lg:flex flex-row gap-8 h-[calc(100vh-4rem)]">
+          {/* Sidebar desktop */}
+          <div className="w-1/3 h-full overflow-y-auto pr-2">
+            <div className="space-y-6 pb-8">
               {/* Logo et Avatar */}
-              <div className="bg-base-100 rounded-2xl p-5 lg:p-6 border border-base-300 shadow-sm">
+              <div className="bg-base-100 rounded-2xl p-6 border border-base-300 shadow-sm">
                 <div className="flex flex-col items-center space-y-4">
                   <div className="mb-2">
                     <Logo />
@@ -300,12 +492,12 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   </div>
                   
                   <div className="text-center">
-                    <h1 className="text-xl lg:text-2xl font-bold">{pseudo}</h1>
+                    <h1 className="text-2xl font-bold">{pseudo}</h1>
                     <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
                   </div>
                 </div>
 
-                {/* Caractéristiques */}
+                {/* Stats */}
                 {links.length > 0 && (
                   <div className="grid grid-cols-3 gap-3 mt-6">
                     <StatsCard 
@@ -398,17 +590,17 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             </div>
           </div>
 
-          {/* Contenu principal - Scroll indépendant */}
-          <div className="lg:w-2/3 lg:h-full lg:overflow-y-auto lg:pl-2">
-            <div className="space-y-6 lg:pb-8">
-              {/* 🔍 RECHERCHE */}
+          {/* Contenu principal desktop */}
+          <div className="w-2/3 h-full overflow-y-auto pl-2">
+            <div className="space-y-6 pb-8">
+              {/* Recherche */}
               {links.length > 0 && (
                 <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
                   <div className="relative">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 lg:w-5 lg:h-5 opacity-50" />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-50" />
                     <input
                       type="text"
-                      className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm lg:text-base"
+                      className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-base"
                       placeholder="Rechercher un lien par titre, pseudo ou description..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -425,23 +617,8 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 </div>
               )}
 
-              {/* Header mobile */}
-              <div className="lg:hidden">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="relative">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
-                    <Avatar pseudo={pseudo || ""} />
-                  </div>
-                  
-                  <div className="text-center">
-                    <h1 className="text-xl font-bold">{pseudo}</h1>
-                    <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 🔗 LIENS */}
-              <div className="space-y-4 lg:space-y-5">
+              {/* Liens */}
+              <div className="space-y-5">
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-12">
                     <span className="loading loading-spinner loading-lg text-primary mb-4"></span>
@@ -450,18 +627,18 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 ) : processedLinks.length > 0 ? (
                   <>
                     <div className="flex justify-between items-center">
-                      <h2 className="text-lg lg:text-xl font-semibold">
+                      <h2 className="text-xl font-semibold">
                         Liens disponibles 
                         <span className="ml-2 badge badge-primary badge-sm">
                           {processedLinks.length}
                         </span>
                       </h2>
-                      <div className="text-xs opacity-70 hidden lg:block">
+                      <div className="text-xs opacity-70">
                         {search && `Résultats pour : "${search}"`}
                       </div>
                     </div>
                     
-                    <div className="grid gap-4 lg:gap-5">
+                    <div className="grid gap-5">
                       {processedLinks.map(link => (
                         <LinkWithDescription key={link.id} link={link} />
                       ))}
@@ -490,22 +667,22 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
               </div>
 
               {/* Footer CTA */}
-              <div className="mt-8 lg:mt-12 pt-6 lg:pt-8 border-t border-base-300">
-                <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-5 lg:p-6 text-center border border-primary/10">
+              <div className="mt-12 pt-8 border-t border-base-300">
+                <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-6 text-center border border-primary/10">
                   <div className="flex flex-col items-center gap-3">
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 lg:w-6 lg:h-6 text-primary" />
-                      <h3 className="font-semibold text-lg lg:text-xl">Créez votre page gratuite</h3>
+                      <Sparkles className="w-6 h-6 text-primary" />
+                      <h3 className="font-semibold text-xl">Créez votre page gratuite</h3>
                     </div>
-                    <p className="text-sm lg:text-base opacity-80 max-w-md">
+                    <p className="text-base opacity-80 max-w-md">
                       Rassemblez tous vos liens sociaux en une seule page élégante
                     </p>
                     <div className="flex gap-3 mt-2">
-                      <a href="/sign-up" className="btn btn-primary btn-sm lg:btn-md px-4 lg:px-6">
+                      <a href="/sign-up" className="btn btn-primary btn-md px-6">
                         <UserPlus className="w-4 h-4" />
                         Commencer maintenant
                       </a>
-                      <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
+                      <a href="/sign-in" className="btn btn-outline btn-md px-6">
                         <LogIn className="w-4 h-4" />
                         Se connecter
                       </a>
