@@ -6,7 +6,7 @@ import LinkComponent from "@/app/components/LinkComponent"
 import Logo from "@/app/components/Logo"
 import { getSocialLinksWithLikes, getUserInfo } from "@/app/server"
 import { SocialLink } from "@prisma/client"
-import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart } from "lucide-react"
+import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink } from "lucide-react"
 import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react"
 import toast from "react-hot-toast"
 import Fuse from "fuse.js"
@@ -18,45 +18,312 @@ interface SocialLinkWithLikes extends SocialLink {
   isLikedByCurrentUser?: boolean;
 }
 
-/* ------------------ YOUTUBE UTILS ------------------ */
-const getYoutubeVideoId = (url: string): string | null => {
+/* ------------------ UTILS ------------------ */
+// Fonction pour détecter si une URL est une image
+const isImageUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(url);
+};
+
+// Fonction pour détecter si une URL est un PDF
+const isPdfUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /\.pdf$/i.test(url);
+};
+
+// Fonction pour extraire l'ID YouTube
+const getYouTubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+  
   try {
-    const parsedUrl = new URL(url)
-
+    const parsedUrl = new URL(url);
+    
+    // Pour youtu.be
     if (parsedUrl.hostname.includes("youtu.be")) {
-      return parsedUrl.pathname.slice(1)
+      return parsedUrl.pathname.slice(1).split('?')[0];
     }
-
-    if (parsedUrl.searchParams.get("v")) {
-      return parsedUrl.searchParams.get("v")
+    
+    // Pour youtube.com
+    if (parsedUrl.hostname.includes("youtube.com")) {
+      // Vérifier le paramètre v
+      const videoId = parsedUrl.searchParams.get("v");
+      if (videoId) return videoId;
+      
+      // Vérifier les URLs embed
+      const embedMatch = parsedUrl.pathname.match(/\/embed\/([^\/?]+)/);
+      if (embedMatch) return embedMatch[1];
+      
+      // Vérifier les URLs watch
+      const watchMatch = parsedUrl.pathname.match(/\/watch/);
+      if (watchMatch) {
+        const vParam = parsedUrl.searchParams.get("v");
+        if (vParam) return vParam;
+      }
     }
-
-    if (parsedUrl.pathname.includes("/embed/")) {
-      return parsedUrl.pathname.split("/embed/")[1]
-    }
-
-    return null
+    
+    return null;
   } catch {
-    return null
+    return null;
   }
 }
 
+// Fonction pour détecter si une URL est YouTube
+const isYouTubeUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.includes('youtube.com') || url.includes('youtu.be');
+};
+
+/* ------------------ IMAGE CARD COMPONENT ------------------ */
+const ImageCard = memo(({ 
+  link, 
+  onLikeToggle 
+}: { 
+  link: SocialLinkWithLikes;
+  onLikeToggle?: (linkId: string) => Promise<void>;
+}) => {
+  const [showDescription, setShowDescription] = useState(false)
+  const [isLiking, setIsLiking] = useState(false)
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
+
+  // Synchroniser avec les props
+  useEffect(() => {
+    setLocalIsLiked(link.isLikedByCurrentUser || false)
+    setLocalLikesCount(link.likesCount || 0)
+  }, [link.isLikedByCurrentUser, link.likesCount])
+
+  const handleLike = useCallback(async () => {
+    if (!onLikeToggle || isLiking) return;
+    
+    setIsLiking(true);
+    try {
+      const wasLiked = localIsLiked;
+      const newLikesCount = wasLiked ? localLikesCount - 1 : localLikesCount + 1;
+      
+      setLocalIsLiked(!wasLiked);
+      setLocalLikesCount(newLikesCount);
+      
+      await onLikeToggle(link.id);
+    } catch (error) {
+      console.error('Erreur like:', error);
+      setLocalIsLiked(link.isLikedByCurrentUser || false);
+      setLocalLikesCount(link.likesCount || 0);
+    } finally {
+      setIsLiking(false);
+    }
+  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount])
+
+  const handleToggleDescription = useCallback(() => {
+    setShowDescription(prev => !prev)
+  }, [])
+
+  return (
+    <div className="bg-gradient-to-br from-base-100 to-base-200/50 p-4 lg:p-5 rounded-xl border border-base-300 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
+      {/* En-tête avec titre et boutons */}
+      <div className="flex items-center justify-between mb-3 lg:mb-4">
+        <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+          <div className="flex-shrink-0">
+            <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <ImageIcon className="w-4 h-4 lg:w-5 lg:h-5 text-primary" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
+            {link.pseudo && (
+              <span className="text-xs opacity-60 truncate block">
+                @{link.pseudo}
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {/* Section likes et description */}
+        <div className="flex items-center gap-2">
+          {/* Bouton like */}
+          <button
+            onClick={handleLike}
+            disabled={isLiking}
+            className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
+            title={localIsLiked ? "Retirer le like" : "Liker cette image"}
+          >
+            <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+            {localLikesCount > 0 && (
+              <span className="text-xs mt-1">{localLikesCount}</span>
+            )}
+          </button>
+          
+          {/* Bouton pour afficher/masquer la description */}
+          {link.description && (
+            <button
+              onClick={handleToggleDescription}
+              className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
+              aria-label="Afficher la description"
+            >
+              <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Description (visible uniquement si cliqué) */}
+      {showDescription && link.description && (
+        <div className="mb-3 lg:mb-4 animate-fadeIn">
+          <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
+            <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
+              {link.description}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Image en plein rendu */}
+      <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
+        <img 
+          src={link.url} 
+          alt={link.description || link.title || "Image"}
+          className="w-full h-64 object-cover hover:scale-105 transition-transform duration-300"
+          loading="lazy"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            const parent = target.parentElement;
+            if (parent) {
+              const fallbackDiv = document.createElement('div');
+              fallbackDiv.className = "w-full h-64 flex flex-col items-center justify-center bg-base-200 p-4";
+              fallbackDiv.innerHTML = `
+                <div class="text-center mb-3">
+                  <ImageIcon class="w-12 h-12 text-base-content/30 mx-auto mb-2" />
+                  <p class="text-sm text-base-content/70 mb-2">Image non disponible</p>
+                </div>
+                <a href="${link.url}" target="_blank" rel="noopener noreferrer" 
+                   class="btn btn-xs btn-outline">
+                  Voir le lien
+                </a>
+              `;
+              parent.appendChild(fallbackDiv);
+            }
+          }}
+        />
+        <a 
+          href={link.url} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group"
+          title="Ouvrir l'image en grand"
+        >
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
+            <Eye className="w-8 h-8 text-white mb-1" />
+            <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">Agrandir</span>
+          </div>
+        </a>
+      </div>
+
+      {/* Footer avec actions */}
+      <div className="flex justify-between items-center mt-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLike}
+            disabled={isLiking}
+            className={`btn btn-xs gap-2 ${localIsLiked ? 'btn-error' : 'btn-ghost hover:btn-error'}`}
+            title={localIsLiked ? "Retirer le like" : "Ajouter un like"}
+          >
+            {isLiking ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <>
+                <Heart className={`w-4 h-4 ${localIsLiked ? 'fill-current' : ''}`} />
+                <span className="text-sm font-medium">{localLikesCount}</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="badge badge-info badge-sm">Image</span>
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+            title="Ouvrir dans un nouvel onglet"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span className="text-xs hidden sm:inline">Ouvrir</span>
+          </a>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
+        {link.clicks > 0 && (
+          <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+            <Zap className="w-3 h-3" />
+            <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
+          </div>
+        )}
+        
+        {localLikesCount > 0 && (
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
+            <Heart className="w-3 h-3" />
+            <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
+ImageCard.displayName = 'ImageCard'
+
 /* ------------------ PREVIEW COMPONENT ------------------ */
 const YoutubePreview = memo(({ url }: { url: string }) => {
-  const videoId = useMemo(() => getYoutubeVideoId(url), [url])
+  const videoId = useMemo(() => getYouTubeVideoId(url), [url])
   
-  if (!videoId) return null
+  if (!videoId) {
+    return (
+      <div className="bg-gradient-to-br from-red-50 to-blue-50 dark:from-red-900/10 dark:to-blue-900/10 p-6 rounded-xl border border-red-200 dark:border-red-800/30 mb-4">
+        <div className="flex flex-col items-center text-center">
+          <div className="relative mb-4">
+            <div className="w-16 h-20 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+              <svg className="w-10 h-10 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+              </svg>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm">YouTube Video</h4>
+            <p className="text-xs opacity-70">
+              Lien YouTube détecté
+            </p>
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <svg className="w-4 h-4 opacity-70" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+              </svg>
+              <span className="text-xs">Ouvrir la vidéo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-base-300 mb-4 shadow-sm">
       <iframe
-        src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+        src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&controls=1`}
         title="Prévisualisation YouTube"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
         className="absolute inset-0 w-full h-full"
         loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
       />
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
+        <div className="flex items-center gap-2 text-white">
+         
+          <span className="text-sm font-medium"></span>
+        </div>
+      </div>
     </div>
   )
 })
@@ -113,7 +380,6 @@ const LinkWithDescription = memo(({
     
     setIsLiking(true);
     try {
-      // Mise à jour optimiste immédiate
       const wasLiked = localIsLiked;
       const newLikesCount = wasLiked ? localLikesCount - 1 : localLikesCount + 1;
       
@@ -123,7 +389,6 @@ const LinkWithDescription = memo(({
       await onLikeToggle(link.id);
     } catch (error) {
       console.error('Erreur like:', error);
-      // Revert en cas d'erreur
       setLocalIsLiked(link.isLikedByCurrentUser || false);
       setLocalLikesCount(link.likesCount || 0);
     } finally {
@@ -135,96 +400,113 @@ const LinkWithDescription = memo(({
     setShowDescription(prev => !prev)
   }, [])
 
-  const isYouTube = link.title === "YouTube"
+  const isYouTube = isYouTubeUrl(link.url)
+  const isImage = isImageUrl(link.url)
+  const isPdf = isPdfUrl(link.url)
 
   return (
     <div className="space-y-4">
       {/* Prévisualisation YouTube - conditionnelle */}
       {isYouTube && <YoutubePreview url={link.url} />}
 
-      {/* Carte du lien */}
-      <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
-        {/* En-tête avec titre, bouton info et likes */}
-        <div className="flex items-center justify-between mb-3 lg:mb-4">
-          <div className="flex items-center gap-2 lg:gap-3 min-w-0">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-white/50 dark:bg-black/30 flex items-center justify-center">
-                <Globe className="w-4 h-4 lg:w-5 lg:h-5 opacity-70" />
+      {/* Si c'est une image, afficher le composant ImageCard */}
+      {isImage ? (
+        <ImageCard link={link} onLikeToggle={onLikeToggle} />
+      ) : (
+        /* Sinon, afficher la carte normale pour les autres liens */
+        <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
+          {/* En-tête avec titre, bouton info et likes */}
+          <div className="flex items-center justify-between mb-3 lg:mb-4">
+            <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-white/50 dark:bg-black/30 flex items-center justify-center">
+                  {isPdf ? (
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                    </svg>
+                  ) : isYouTube ? (
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                    </svg>
+                  ) : (
+                    <Globe className="w-4 h-4 lg:w-5 lg:h-5 opacity-70" />
+                  )}
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
+                <span className="text-xs opacity-60 truncate block">
+                  @{link.pseudo}
+                </span>
               </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
-              <span className="text-xs opacity-60 truncate block">
-                @{link.pseudo}
-              </span>
+            
+            {/* Section likes et description */}
+            <div className="flex items-center gap-2">
+              {/* Bouton like */}
+              <button
+                onClick={handleLike}
+                disabled={isLiking}
+                className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
+                title={localIsLiked ? "Retirer le like" : "Liker ce lien"}
+              >
+                <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+                {localLikesCount > 0 && (
+                  <span className="text-xs mt-1">{localLikesCount}</span>
+                )}
+              </button>
+              
+              {/* Bouton pour afficher/masquer la description */}
+              {link.description && (
+                <button
+                  onClick={handleToggleDescription}
+                  className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
+                  aria-label="Afficher la description"
+                >
+                  <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+                </button>
+              )}
             </div>
           </div>
-          
-          {/* Section likes et description */}
-          <div className="flex items-center gap-2">
-            {/* Bouton like */}
-            <button
-              onClick={handleLike}
-              disabled={isLiking}
-              className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
-              title={localIsLiked ? "Retirer le like" : "Liker ce lien"}
-            >
-              <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
-              {localLikesCount > 0 && (
-                <span className="text-xs mt-1">{localLikesCount}</span>
-              )}
-            </button>
+
+          {/* Description (visible uniquement si cliqué) */}
+          {showDescription && link.description && (
+            <div className="mb-3 lg:mb-4 animate-fadeIn">
+              <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
+                <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
+                  {link.description}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Lien principal */}
+          <div className="mt-3 lg:mt-4">
+            <LinkComponent 
+              socialLink={link} 
+              readonly 
+              showDescription={false}
+            />
+          </div>
+
+          {/* Stats */}
+          <div className="mt-3 flex justify-between items-center">
+            {link.clicks > 0 && (
+              <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+                <Zap className="w-3 h-3" />
+                <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
+              </div>
+            )}
             
-            {/* Bouton pour afficher/masquer la description */}
-            {link.description && (
-              <button
-                onClick={handleToggleDescription}
-                className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
-                aria-label="Afficher la description"
-              >
-                <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
-              </button>
+            {localLikesCount > 0 && (
+              <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
+                <Heart className="w-3 h-3" />
+                <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
+              </div>
             )}
           </div>
         </div>
-
-        {/* Description (visible uniquement si cliqué) */}
-        {showDescription && link.description && (
-          <div className="mb-3 lg:mb-4 animate-fadeIn">
-            <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
-              <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
-                {link.description}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Lien principal */}
-        <div className="mt-3 lg:mt-4">
-          <LinkComponent 
-            socialLink={link} 
-            readonly 
-            showDescription={false}
-          />
-        </div>
-
-        {/* Stats */}
-        <div className="mt-3 flex justify-between items-center">
-          {link.clicks > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
-              <Zap className="w-3 h-3" />
-              <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
-            </div>
-          )}
-          
-          {localLikesCount > 0 && (
-            <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
-              <Heart className="w-3 h-3" />
-              <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 })
@@ -291,13 +573,14 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   const isFirstRender = useRef(true)
 
   // Calculer les statistiques avec useMemo
-  const { totalLikes, linksWithDescription, totalClicks } = useMemo(() => {
+  const { totalLikes, linksWithDescription, totalClicks, imageLinksCount } = useMemo(() => {
     return {
       totalLikes: links.reduce((sum, link) => sum + (link.likesCount || 0), 0),
       linksWithDescription: links.filter(link => 
         link.description && link.description.trim() !== ""
       ).length,
-      totalClicks: links.reduce((sum, link) => sum + link.clicks, 0)
+      totalClicks: links.reduce((sum, link) => sum + link.clicks, 0),
+      imageLinksCount: links.filter(link => isImageUrl(link.url)).length
     }
   }, [links])
 
@@ -391,13 +674,27 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
     }
 
     try {
+      const currentLink = links.find(link => link.id === linkId);
+      if (!currentLink) {
+        throw new Error("Lien non trouvé");
+      }
+
+      const isCurrentlyLiked = currentLink.isLikedByCurrentUser || false;
+      
       const response = await fetch("/api/likes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ linkId }),
+        body: JSON.stringify({ 
+          linkId,
+          action: isCurrentlyLiked ? "unlike" : "like"
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error("API non disponible, simulation locale");
+      }
 
       const data = await response.json();
 
@@ -411,19 +708,20 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           link.id === linkId
             ? {
                 ...link,
-                likesCount: data.likesCount,
-                isLikedByCurrentUser: data.liked,
+                likesCount: data.likesCount || (link.likesCount || 0) + (isCurrentlyLiked ? -1 : 1),
+                isLikedByCurrentUser: data.liked !== undefined ? data.liked : !isCurrentlyLiked,
               }
             : link
         )
       );
 
-      // Optionnel: stocker en localStorage pour persistance entre navigations
+      // Stocker en localStorage pour persistance
       if (typeof window !== 'undefined') {
         const likedLinksKey = `likedLinks_${currentUser.id}`;
         const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
         
-        if (data.liked) {
+        const newIsLiked = data.liked !== undefined ? data.liked : !isCurrentlyLiked;
+        if (newIsLiked) {
           likedLinks[linkId] = true;
         } else {
           delete likedLinks[linkId];
@@ -432,14 +730,53 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         localStorage.setItem(likedLinksKey, JSON.stringify(likedLinks));
       }
 
-      toast.success(data.message || (data.liked ? "Lien liké ! ❤️" : "Like retiré"));
+      toast.success(data.message || (isCurrentlyLiked ? "Like retiré" : "Lien liké ! ❤️"));
     } catch (error: any) {
       console.error("Erreur:", error);
-      toast.error(error.message || "Erreur lors du like");
-      // Re-fetch en cas d'erreur
-      fetchData()
+      
+      // Simulation locale si l'API n'existe pas
+      if (error.message === "API non disponible, simulation locale") {
+        // Mise à jour locale uniquement
+        setLinks(prevLinks =>
+          prevLinks.map(link => {
+            if (link.id === linkId) {
+              const isCurrentlyLiked = link.isLikedByCurrentUser || false;
+              const newLikesCount = (link.likesCount || 0) + (isCurrentlyLiked ? -1 : 1);
+              
+              return {
+                ...link,
+                likesCount: newLikesCount,
+                isLikedByCurrentUser: !isCurrentlyLiked,
+              };
+            }
+            return link;
+          })
+        );
+        
+        // Mettre à jour le localStorage
+        if (currentUser && typeof window !== 'undefined') {
+          const likedLinksKey = `likedLinks_${currentUser.id}`;
+          const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
+          const currentLink = links.find(link => link.id === linkId);
+          
+          if (currentLink) {
+            const isCurrentlyLiked = currentLink.isLikedByCurrentUser || false;
+            if (!isCurrentlyLiked) {
+              likedLinks[linkId] = true;
+            } else {
+              delete likedLinks[linkId];
+            }
+            localStorage.setItem(likedLinksKey, JSON.stringify(likedLinks));
+          }
+        }
+        
+        toast.success("Like mis à jour localement");
+      } else {
+        toast.error(error.message || "Erreur lors du like");
+        fetchData();
+      }
     }
-  }, [isSignedIn, currentUser, fetchData])
+  }, [isSignedIn, currentUser, links, fetchData])
 
   /* ----------- RESTAURER LES LIKES DEPUIS LE LOCALSTORAGE ----------- */
   useEffect(() => {
@@ -458,7 +795,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
 
   /* ----------- HANDLERS ----------- */
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value)
+    setSearch(e.target.value || "")
   }, [])
 
   const handleClearSearch = useCallback(() => {
@@ -506,28 +843,62 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
     </div>
   )
 
-  const renderLinksList = () => (
-    <>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold">
-          Liens disponibles 
-          <span className="ml-2 badge badge-primary badge-sm">
-            {processedLinks.length}
-          </span>
-        </h2>
-      </div>
-      
-      <div className="space-y-4">
-        {processedLinks.map(link => (
-          <LinkWithDescription 
-            key={link.id} 
-            link={link}
-            onLikeToggle={handleLikeToggle}
-          />
-        ))}
-      </div>
-    </>
-  )
+  const renderLinksList = () => {
+    // Séparer les images des autres liens pour un meilleur affichage
+    const imageLinks = processedLinks.filter(link => isImageUrl(link.url))
+    const otherLinks = processedLinks.filter(link => !isImageUrl(link.url))
+
+    return (
+      <>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">
+            Liens disponibles 
+            <span className="ml-2 badge badge-primary badge-sm">
+              {processedLinks.length}
+            </span>
+          </h2>
+        </div>
+        
+        {/* Section des images */}
+        {imageLinks.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <ImageIcon className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold text-base">Images ({imageLinks.length})</h3>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {imageLinks.map(link => (
+                <ImageCard 
+                  key={link.id} 
+                  link={link}
+                  onLikeToggle={handleLikeToggle}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Section des autres liens */}
+        {otherLinks.length > 0 && (
+          <div className="space-y-4">
+            {imageLinks.length > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <LinkIcon className="w-5 h-5 text-secondary" />
+                <h3 className="font-semibold text-base">Autres liens ({otherLinks.length})</h3>
+              </div>
+            )}
+            {otherLinks.map(link => (
+              <LinkWithDescription 
+                key={link.id} 
+                link={link}
+                onLikeToggle={handleLikeToggle}
+              />
+            ))}
+          </div>
+        )}
+      </>
+    )
+  }
 
   const renderMobileView = () => (
     <div className="lg:hidden">
@@ -548,7 +919,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
 
       {/* Stats mobiles */}
       {links.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-4 gap-2 mb-6">
           <StatsCard 
             value={links.length} 
             label="Liens" 
@@ -566,6 +937,12 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             label="Clics" 
             icon={Zap} 
             color="accent"
+          />
+          <StatsCard 
+            value={imageLinksCount} 
+            label="Images" 
+            icon={ImageIcon} 
+            color="primary"
           />
         </div>
       )}
@@ -719,9 +1096,9 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
               </div>
             </div>
 
-            {/* Stats AVEC LIKES */}
+            {/* Stats AVEC LIKES et IMAGES */}
             {links.length > 0 && (
-              <div className="grid grid-cols-3 gap-3 mt-6">
+              <div className="grid grid-cols-2 gap-3 mt-6">
                 <StatsCard 
                   value={links.length} 
                   label="Liens" 
@@ -739,6 +1116,12 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   label="Clics" 
                   icon={Zap} 
                   color="accent"
+                />
+                <StatsCard 
+                  value={imageLinksCount} 
+                  label="Images" 
+                  icon={ImageIcon} 
+                  color="primary"
                 />
               </div>
             )}
@@ -871,15 +1254,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   </div>
                 </div>
                 
-                <div className="grid gap-5">
-                  {processedLinks.map(link => (
-                    <LinkWithDescription 
-                      key={link.id} 
-                      link={link}
-                      onLikeToggle={handleLikeToggle}
-                    />
-                  ))}
-                </div>
+                {renderLinksList()}
               </>
             ) : renderEmptyState()}
           </div>

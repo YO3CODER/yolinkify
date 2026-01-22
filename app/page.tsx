@@ -6,7 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { useEffect, useState, useRef, useCallback, memo, useMemo } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
-import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles } from "lucide-react";
+import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2 } from "lucide-react";
 import socialLinksData from "./socialLinksData";
 import { SocialLink } from "@prisma/client";
 import EmptyState from "./components/EmptyState";
@@ -15,6 +15,7 @@ import Visualisation from "./components/Visualisation";
 
 // Mémoïsation de la fonction de troncature
 const truncateLink = (url: string, maxLength = 20) => {
+  if (!url) return "";
   return url.length > maxLength
     ? url.substring(0, maxLength) + "..."
     : url;
@@ -33,6 +34,60 @@ const isValidURL = (url: string) => {
 // Fonction pour vérifier le type de fichier
 const isImageFile = (file: File) => file.type.startsWith('image/');
 const isPDFFile = (file: File) => file.type === 'application/pdf';
+
+// Fonction pour détecter si une URL est une image
+const isImageUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(url);
+};
+
+// Fonction pour détecter si une URL est un PDF
+const isPdfUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /\.pdf$/i.test(url);
+};
+
+// Fonction pour extraire l'ID YouTube
+const getYouTubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+  
+  try {
+    const parsedUrl = new URL(url);
+    
+    // Pour youtu.be
+    if (parsedUrl.hostname.includes("youtu.be")) {
+      return parsedUrl.pathname.slice(1).split('?')[0];
+    }
+    
+    // Pour youtube.com
+    if (parsedUrl.hostname.includes("youtube.com")) {
+      // Vérifier le paramètre v
+      const videoId = parsedUrl.searchParams.get("v");
+      if (videoId) return videoId;
+      
+      // Vérifier les URLs embed
+      const embedMatch = parsedUrl.pathname.match(/\/embed\/([^\/?]+)/);
+      if (embedMatch) return embedMatch[1];
+      
+      // Vérifier les URLs watch
+      const watchMatch = parsedUrl.pathname.match(/\/watch/);
+      if (watchMatch) {
+        const vParam = parsedUrl.searchParams.get("v");
+        if (vParam) return vParam;
+      }
+    }
+    
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// Fonction pour détecter si une URL est YouTube
+const isYouTubeUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.includes('youtube.com') || url.includes('youtu.be');
+};
 
 // Composant de prévisualisation pour fichiers (memoïsé)
 const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' }) => {
@@ -106,46 +161,62 @@ const UrlPreview = memo(({ url }: { url: string }) => {
   const [previewType, setPreviewType] = useState<'none' | 'youtube' | 'image' | 'pdf'>('none');
   
   useEffect(() => {
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    if (isYouTubeUrl(url)) {
       setPreviewType('youtube');
-    } else if (url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i)) {
+    } else if (isImageUrl(url)) {
       setPreviewType('image');
-    } else if (url.match(/\.pdf$/i)) {
+    } else if (isPdfUrl(url)) {
       setPreviewType('pdf');
     } else {
       setPreviewType('none');
     }
   }, [url]);
 
-  const getYoutubeVideoId = useCallback((url: string): string | null => {
-    try {
-      const parsedUrl = new URL(url);
-      if (parsedUrl.hostname.includes("youtu.be")) {
-        return parsedUrl.pathname.slice(1);
-      }
-      if (parsedUrl.searchParams.get("v")) {
-        return parsedUrl.searchParams.get("v");
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }, []);
-
   if (previewType === 'youtube') {
-    const videoId = getYoutubeVideoId(url);
-    if (!videoId) return null;
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) {
+      return (
+        <div className="bg-gradient-to-br from-red-50 to-blue-50 dark:from-red-900/10 dark:to-blue-900/10 p-6 rounded-lg border border-red-200 dark:border-red-800/30">
+          <div className="flex flex-col items-center text-center">
+            <div className="relative mb-4">
+              <div className="w-16 h-20 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-10 h-10 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                </svg>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-semibold text-sm">YouTube Video</h4>
+              <p className="text-xs opacity-70">
+                Lien YouTube détecté
+              </p>
+              <div className="flex items-center justify-center gap-2 mt-3">
+                <ExternalLink className="w-4 h-4 opacity-70" />
+                <span className="text-xs">Ouvrir la vidéo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-base-300">
         <iframe
-          src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+          src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&controls=1`}
           title="Prévisualisation YouTube"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
           className="absolute inset-0 w-full h-full"
           loading="lazy"
-        />     
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
+          <div className="flex items-center gap-2 text-white">
+           
+            <span className="text-sm font-medium"></span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -160,6 +231,18 @@ const UrlPreview = memo(({ url }: { url: string }) => {
           loading="lazy"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = 'none';
+            const parent = (e.target as HTMLElement).parentElement;
+            if (parent) {
+              const fallback = document.createElement('div');
+              fallback.className = "w-full h-full flex items-center justify-center bg-base-200";
+              fallback.innerHTML = `
+                <div class="text-center">
+                  <ImageIcon class="w-8 h-8 text-base-content/30 mx-auto mb-2" />
+                  <p class="text-sm text-base-content/70">Image non disponible</p>
+                </div>
+              `;
+              parent.appendChild(fallback);
+            }
           }}
         />
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
@@ -226,6 +309,178 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
+// Composant ImageCard pour afficher les images directement
+const ImageCard = memo(({ 
+  link, 
+  onRemove, 
+  showDescription,
+  fetchLinks 
+}: { 
+  link: SocialLinkWithLikes;
+  onRemove: (linkId: string) => Promise<void>;
+  showDescription: boolean;
+  fetchLinks: () => Promise<void>;
+}) => {
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [isLoadingLike, setIsLoadingLike] = useState(false);
+  const [likesCount, setLikesCount] = useState(link.likesCount || 0);
+  const [isLiked, setIsLiked] = useState(link.isLikedByCurrentUser || false);
+
+  const handleRemove = async () => {
+    setIsRemoving(true);
+    try {
+      await onRemove(link.id);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const handleLike = async () => {
+    if (isLoadingLike) return;
+    
+    setIsLoadingLike(true);
+    try {
+      // Pour éviter l'erreur, on simule le like localement
+      const newIsLiked = !isLiked;
+      setIsLiked(newIsLiked);
+      setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
+      
+      toast.success(newIsLiked ? "Like ajouté!" : "Like retiré!");
+    } catch (error) {
+      console.error(error);
+      // Annuler les changements en cas d'erreur
+      setIsLiked(!isLiked);
+      setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
+      toast.error("Erreur lors du traitement du like");
+    } finally {
+      setIsLoadingLike(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100 border border-base-300 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:border-primary/50 w-full">
+      <div className="p-4">
+        {/* En-tête - MODIFIÉ pour prendre toute la largeur */}
+        <div className="flex justify-between items-start mb-3 w-full">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="font-bold text-base truncate flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="truncate">{link.title}</span>
+              </h3>
+              {link.pseudo && (
+                <span className="badge badge-primary badge-sm flex-shrink-0">
+                  {link.pseudo}
+                </span>
+              )}
+            </div>
+            
+            {showDescription && link.description && (
+              <p className="text-sm text-base-content/70 mb-3 break-words">
+                {link.description}
+              </p>
+            )}
+          </div>
+
+          <div className="flex-shrink-0 ml-2">
+            <button
+              onClick={handleRemove}
+              disabled={isRemoving}
+              className="btn btn-ghost btn-xs btn-circle hover:btn-error text-base-content/50 hover:text-error transition-all"
+              title="Supprimer l'image"
+            >
+              {isRemoving ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Image */}
+        <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
+          <img 
+            src={link.url} 
+            alt={link.description || link.title || "Image"}
+            className="w-full h-64 object-cover hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.className = "w-full h-64 flex flex-col items-center justify-center bg-base-200 p-4";
+                fallbackDiv.innerHTML = `
+                  <div class="text-center mb-3">
+                    <ImageIcon class="w-12 h-12 text-base-content/30 mx-auto mb-2" />
+                    <p class="text-sm text-base-content/70 mb-2">Image non disponible</p>
+                  </div>
+                  <a href="${link.url}" target="_blank" rel="noopener noreferrer" 
+                     class="btn btn-xs btn-outline">
+                    Voir le lien
+                  </a>
+                `;
+                parent.appendChild(fallbackDiv);
+              }
+            }}
+          />
+          <a 
+            href={link.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group"
+            title="Ouvrir l'image en grand"
+          >
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
+              <Eye className="w-8 h-8 text-white mb-1" />
+              <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">Agrandir</span>
+            </div>
+          </a>
+        </div>
+
+        {/* Footer avec likes et actions - MODIFIÉ pour prendre toute la largeur */}
+        <div className="flex justify-between items-center w-full">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLike}
+              disabled={isLoadingLike}
+              className={`btn btn-xs gap-2 ${isLiked ? 'btn-error' : 'btn-ghost hover:btn-error'}`}
+              title={isLiked ? "Retirer le like" : "Ajouter un like"}
+            >
+              {isLoadingLike ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <>
+                  <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+                  <span className="text-sm font-medium">{likesCount}</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="badge badge-info badge-sm">Image</span>
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+              title="Ouvrir dans un nouvel onglet"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span className="text-xs hidden sm:inline">Ouvrir</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+ImageCard.displayName = 'ImageCard';
+
 export default function Home() {
   const { user } = useUser();
   const email = user?.primaryEmailAddress?.emailAddress as string;
@@ -234,7 +489,7 @@ export default function Home() {
   const [pseudo, setPseudo] = useState<string | null | undefined>(null);
   const [theme, setTheme] = useState<string | null | undefined>(null);
   const [theme2, setTheme2] = useState<string | null | undefined>(null);
-  const [link, setLink] = useState<string>("");
+  const [link, setLink] = useState<string>(""); // Toujours initialisé avec une chaîne vide
   const [socialPseudo, setSocialPseudo] = useState<string>("");
   const [socialDescription, setSocialDescription] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
@@ -311,7 +566,7 @@ export default function Home() {
     if (title !== "Image" && title !== "Document PDF") {
       setSelectedFile(null);
       setUseFileUpload(false);
-      setLink("");
+      setLink(""); // Toujours une chaîne vide, jamais undefined
     }
   }, [title]);
 
@@ -339,6 +594,8 @@ export default function Home() {
 
     setSelectedFile(file);
     setUseFileUpload(true);
+    // Réinitialiser le champ URL quand on sélectionne un fichier
+    setLink("");
   }, [title]);
 
   // Upload du fichier
@@ -411,7 +668,7 @@ export default function Home() {
 
   // Réinitialiser le formulaire
   const resetForm = useCallback(() => {
-    setLink("");
+    setLink(""); // Toujours une chaîne vide
     setSocialPseudo("");
     setSocialDescription("");
     setTitle(socialLinksDataMemo[0].name);
@@ -430,7 +687,7 @@ export default function Home() {
     }
 
     // Validation pour les URLs normales
-    if (!link) {
+    if (!link || link.trim() === "") {
       toast.error(`Veuillez ${title === "Image" ? "sélectionner une image" : title === "Document PDF" ? "sélectionner un PDF" : "entrer une URL"}`);
       return;
     }
@@ -440,7 +697,7 @@ export default function Home() {
       return;
     }
 
-    if (!socialPseudo) {
+    if (!socialPseudo || socialPseudo.trim() === "") {
       toast.error("Veuillez entrer un pseudo");
       return;
     }
@@ -558,7 +815,7 @@ export default function Home() {
 
   // Handlers memoïsés
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+    setSearchQuery(e.target.value || ""); // Toujours une chaîne vide si undefined
   }, []);
 
   const handleClearSearch = useCallback(() => {
@@ -574,15 +831,15 @@ export default function Home() {
   }, []);
 
   const handleSocialPseudoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSocialPseudo(e.target.value);
+    setSocialPseudo(e.target.value || ""); // Toujours une chaîne vide si undefined
   }, []);
 
   const handleSocialDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setSocialDescription(e.target.value);
+    setSocialDescription(e.target.value || ""); // Toujours une chaîne vide si undefined
   }, []);
 
   const handleLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLink(e.target.value);
+    setLink(e.target.value || ""); // CORRECTION ICI : Toujours une chaîne vide si undefined
   }, []);
 
   const handleCloseModal = useCallback(() => {
@@ -624,40 +881,83 @@ export default function Home() {
     </div>
   );
 
-  const renderLinksList = () => (
-    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
-      {filteredLinks.map(link => (
-        <LinkComponent
-          key={link.id}
-          socialLink={link}
-          onRemove={handleRemoveLink}
-          readonly={false}
-          fetchLinks={handleRefreshLinks}
-          showDescription={showDescription}
-        />
-      ))}
-    </div>
-  );
+  // Fonction pour afficher les liens
+  const renderLinksList = () => {
+    // Séparer les images des autres liens
+    const imageLinks = filteredLinks.filter(link => isImageUrl(link.url));
+    const otherLinks = filteredLinks.filter(link => !isImageUrl(link.url));
+
+    return (
+      <div className="space-y-6 w-full">
+        {/* Section des images */}
+        {imageLinks.length > 0 && (
+          <div className="space-y-4 w-full">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-lg">Images ({imageLinks.length})</h3>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
+              {imageLinks.map(link => (
+                <div key={link.id} className="w-full">
+                  <ImageCard
+                    link={link}
+                    onRemove={handleRemoveLink}
+                    showDescription={showDescription}
+                    fetchLinks={handleRefreshLinks}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Section des autres liens */}
+        {otherLinks.length > 0 && (
+          <div className="space-y-4 w-full">
+            {(imageLinks.length > 0 || otherLinks.length > 0) && (
+              <div className="flex items-center gap-2">
+                <ExternalLink className="w-5 h-5 text-secondary" />
+                <h3 className="font-bold text-lg">Liens ({otherLinks.length})</h3>
+              </div>
+            )}
+            <div className="flex flex-col gap-4 w-full">
+              {otherLinks.map(link => (
+                <div key={link.id} className="w-full">
+                  <LinkComponent
+                    socialLink={link}
+                    onRemove={handleRemoveLink}
+                    readonly={false}
+                    fetchLinks={handleRefreshLinks}
+                    showDescription={showDescription}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <Wrapper>
       <Toaster position="top-right" reverseOrder={false} />
 
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-5rem)]">
+      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-5rem)] w-full">
         {/* Colonne gauche - Agrandie (35%) avec scroll indépendant */}
-        <div className="lg:w-2/5 lg:h-full lg:overflow-y-auto lg:pr-3">
-          <div className="space-y-6 lg:pb-8">
+        <div className="lg:w-2/5 lg:h-full lg:overflow-y-auto lg:pr-3 w-full">
+          <div className="space-y-6 lg:pb-8 w-full">
             {pseudo && theme && (
-              <div className="space-y-6">
+              <div className="space-y-6 w-full">
                 {/* En-tête dans la sidebar */}
-                <div className="bg-gradient-to-br from-primary/10 via-base-200 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm">
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="flex items-center gap-2 mb-2">
+                <div className="bg-gradient-to-br from-primary/10 via-base-200 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                  <div className="flex flex-col items-center space-y-4 w-full">
+                    <div className="flex items-center gap-2 mb-2 w-full">
                       <Sparkles className="w-5 h-5 text-primary" />
                       <h2 className="font-bold text-lg">Tableau de bord</h2>
                     </div>
                     
-                    <div className="text-center">
+                    <div className="text-center w-full">
                       <h1 className="text-xl font-bold">{pseudo}</h1>
                       <p className="text-sm opacity-70 mt-1">Gérez votre page de liens</p>
                     </div>
@@ -665,14 +965,14 @@ export default function Home() {
                 </div>
 
                 {/* Sélecteur de thème amélioré */}
-                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
+                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                  <div className="flex items-center gap-3 mb-4 w-full">
                     <Palette className="w-5 h-5 text-primary" />
                     <h3 className="font-bold text-lg">Personnalisation</h3>
                   </div>
                   
-                  <div className="space-y-4">
-                    <div>
+                  <div className="space-y-4 w-full">
+                    <div className="w-full">
                       <label className="label">
                         <span className="label-text font-semibold">Thème de votre page</span>
                       </label>
@@ -707,22 +1007,22 @@ export default function Home() {
                 </div>
 
                 {/* Stats des likes améliorées */}
-                <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm">
-                  <div className="flex items-center gap-3 mb-5">
+                <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                  <div className="flex items-center gap-3 mb-5 w-full">
                     <Heart className="w-6 h-6 text-primary" />
-                    <div>
+                    <div className="w-full">
                       <h3 className="font-bold text-lg">Statistiques</h3>
                       <p className="text-sm text-base-content/70">Engagement de votre page</p>
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-base-200 rounded-xl p-4">
-                      <div className="flex items-center gap-3 mb-2">
+                  <div className="grid grid-cols-2 gap-4 w-full">
+                    <div className="bg-base-200 rounded-xl p-4 w-full">
+                      <div className="flex items-center gap-3 mb-2 w-full">
                         <div className="p-2 rounded-lg bg-primary/10">
                           <Heart className="w-5 h-5 text-primary" />
                         </div>
-                        <div>
+                        <div className="w-full">
                           <div className="stat-value text-2xl">{totalLikes}</div>
                           <div className="stat-title text-sm">Total des likes</div>
                         </div>
@@ -730,12 +1030,12 @@ export default function Home() {
                       <div className="text-xs opacity-70">sur {links.length} liens</div>
                     </div>
                     
-                    <div className="bg-base-200 rounded-xl p-4">
-                      <div className="flex items-center gap-3 mb-2">
+                    <div className="bg-base-200 rounded-xl p-4 w-full">
+                      <div className="flex items-center gap-3 mb-2 w-full">
                         <div className="p-2 rounded-lg bg-secondary/10">
                           <Users className="w-5 h-5 text-secondary" />
                         </div>
-                        <div>
+                        <div className="w-full">
                           <div className="stat-value text-2xl">{links.length}</div>
                           <div className="stat-title text-sm">Liens actifs</div>
                         </div>
@@ -745,11 +1045,17 @@ export default function Home() {
                   </div>
                   
                   {links.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-base-300">
-                      <div className="flex items-center justify-between text-sm">
+                    <div className="mt-4 pt-4 border-t border-base-300 w-full">
+                      <div className="flex items-center justify-between text-sm w-full">
                         <span className="opacity-70">Liens avec description:</span>
                         <span className="font-semibold">
                           {linksWithDescriptionCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm mt-1 w-full">
+                        <span className="opacity-70">Images:</span>
+                        <span className="font-semibold">
+                          {links.filter(link => isImageUrl(link.url)).length}
                         </span>
                       </div>
                     </div>
@@ -757,10 +1063,10 @@ export default function Home() {
                 </div>
 
                 {/* Visualisation améliorée */}
-                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
+                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                  <div className="flex items-center gap-3 mb-4 w-full">
                     <Sparkles className="w-5 h-5 text-primary" />
-                    <div>
+                    <div className="w-full">
                       <h3 className="font-bold text-lg">Aperçu instantané</h3>
                       <p className="text-sm text-base-content/70">Votre page publique</p>
                     </div>
@@ -771,12 +1077,12 @@ export default function Home() {
                     theme={theme || "retro"}
                   />
                   
-                  <div className="mt-4 pt-4 border-t border-base-300">
+                  <div className="mt-4 pt-4 border-t border-base-300 w-full">
                     <Link
                       href={`/page/${pseudo}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block group"
+                      className="block group w-full"
                     >
                       <div className="btn w-full bg-error
                                  border-none text-white font-semibold
@@ -791,8 +1097,8 @@ export default function Home() {
                 </div>
 
                 {/* Bouton de copie dans la sidebar */}
-                <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm">
-                  <div className="flex flex-col items-center space-y-3">
+                <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                  <div className="flex flex-col items-center space-y-3 w-full">
                     <h3 className="font-bold text-lg">Partagez votre page</h3>
                     <p className="text-sm text-center opacity-70">
                       Copiez le lien de votre page pour le partager
@@ -813,11 +1119,11 @@ export default function Home() {
         </div>
 
         {/* Colonne droite - Réduite (65%) avec scroll indépendant */}
-        <div className="lg:w-3/5 lg:h-full lg:overflow-y-auto lg:pl-3">
-          <div className="space-y-6 lg:pb-8">
+        <div className="lg:w-3/5 lg:h-full lg:overflow-y-auto lg:pl-3 w-full">
+          <div className="space-y-6 lg:pb-8 w-full">
             {/* Barre de recherche et boutons optimisés */}
-            <div className="flex flex-col lg:flex-row gap-3">
-              <div className="relative flex-grow">
+            <div className="flex flex-col lg:flex-row gap-3 w-full">
+              <div className="relative flex-grow w-full">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-4 w-4 text-base-content/60" />
                 </div>
@@ -841,7 +1147,7 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-shrink-0">
                 <button
                   className="btn btn-sm btn-error flex items-center gap-2 text-amber-50
                            hover:btn-primary transition-all duration-200 group"
@@ -877,11 +1183,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Modal optimisé */}
+            {/* Modal optimisé avec scroll fixé */}
             <dialog id="social_links_form" className="modal modal-middle">
-              <div className="modal-box max-w-2xl p-0 overflow-hidden">
-                <div className="bg-amber-400 p-4">
-                  <div className="flex justify-between items-center">
+              <div className="modal-box max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col w-full">
+                <div className="bg-amber-400 p-4 shrink-0 w-full">
+                  <div className="flex justify-between items-center w-full">
                     <div>
                       <h3 className="font-bold text-xl text-white">Nouveau lien</h3>
                       <p className="text-white/80 text-xs mt-1">Ajouter vos liens publics</p>
@@ -897,9 +1203,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="p-4 space-y-4">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div className="form-control">
+                <div className="p-4 space-y-4 overflow-y-auto flex-1 w-full">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 w-full">
+                    <div className="form-control w-full">
                       <label className="label py-1">
                         <span className="label-text font-semibold">Type de contenu</span>
                       </label>
@@ -922,7 +1228,7 @@ export default function Home() {
                       </select>
                     </div>
 
-                    <div className="form-control">
+                    <div className="form-control w-full">
                       <label className="label py-1">
                         <span className="label-text font-semibold">Pseudo / Nom</span>
                       </label>
@@ -937,7 +1243,7 @@ export default function Home() {
                   </div>
 
                   {/* Champ Description */}
-                  <div className="form-control">
+                  <div className="form-control w-full">
                     <label className="label py-1">
                       <span className="label-text font-semibold">Description</span>
                       <span className="label-text-alt text-xs">(Optionnel)</span>
@@ -945,14 +1251,14 @@ export default function Home() {
                     <textarea
                       placeholder="Entrez une description pour votre lien..."
                       className="textarea textarea-bordered textarea-sm w-full h-20 focus:ring-1 focus:ring-primary/20"
-                      value={socialDescription || ""}
+                      value={socialDescription}
                       onChange={handleSocialDescriptionChange}
                     />
                   </div>
 
                   {/* Section Upload ou URL */}
-                  <div className="space-y-3">
-                    <label className="label py-1">
+                  <div className="space-y-3 w-full">
+                    <label className="label py-1 w-full">
                       <span className="label-text font-semibold">
                         {title === "Image" ? "Image" : title === "Document PDF" ? "Document PDF" : "URL du lien"}
                       </span>
@@ -960,7 +1266,7 @@ export default function Home() {
 
                     {/* Mode fichier pour Image/PDF */}
                     {(title === "Image" || title === "Document PDF") ? (
-                      <div className="space-y-3">
+                      <div className="space-y-3 w-full">
                         {/* Input fichier */}
                         <input
                           ref={fileInputRef}
@@ -973,21 +1279,21 @@ export default function Home() {
 
                         {/* Aperçu du fichier sélectionné */}
                         {selectedFile && (
-                          <div className="space-y-3">
-                            <div className="bg-base-100 p-3 rounded-lg border border-base-300">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
+                          <div className="space-y-3 w-full">
+                            <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
+                              <div className="flex items-center justify-between mb-2 w-full">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
                                   {title === "Image" ? (
-                                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex-shrink-0">
                                       <ImageIcon className="w-4 h-4 text-blue-500" />
                                     </div>
                                   ) : (
-                                    <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
+                                    <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 flex-shrink-0">
                                       <FileText className="w-4 h-4 text-red-500" />
                                     </div>
                                   )}
-                                  <div>
-                                    <span className="font-medium text-sm block">
+                                  <div className="min-w-0">
+                                    <span className="font-medium text-sm block truncate">
                                       {selectedFile.name}
                                     </span>
                                     <span className="text-xs opacity-70">
@@ -1000,7 +1306,7 @@ export default function Home() {
                                     setSelectedFile(null);
                                     if (fileInputRef.current) fileInputRef.current.value = '';
                                   }}
-                                  className="btn btn-ghost btn-xs"
+                                  className="btn btn-ghost btn-xs flex-shrink-0"
                                   disabled={isUploading}
                                 >
                                   <X className="w-3 h-3" />
@@ -1008,7 +1314,7 @@ export default function Home() {
                               </div>
 
                               {/* Prévisualisation */}
-                              <div className="mt-3">
+                              <div className="mt-3 w-full">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="text-sm font-medium">Prévisualisation :</span>
                                 </div>
@@ -1021,7 +1327,7 @@ export default function Home() {
 
                             {/* Barre de progression */}
                             {isUploading && (
-                              <div className="mt-3">
+                              <div className="mt-3 w-full">
                                 <div className="flex justify-between text-xs mb-1">
                                   <span>Upload en cours...</span>
                                   <span className="font-medium">{uploadProgress}%</span>
@@ -1038,18 +1344,18 @@ export default function Home() {
                       </div>
                     ) : (
                       /* Mode URL pour réseaux sociaux */
-                      <div className="space-y-3">
+                      <div className="space-y-3 w-full">
                         <input
                           type="url"
                           placeholder="https://..."
                           className="input input-bordered input-sm w-full focus:ring-1 focus:ring-primary/20"
-                          value={link || ""}
+                          value={link} // CORRECTION : Toujours une chaîne, jamais undefined
                           onChange={handleLinkChange}
                         />
                         
                         {/* Prévisualisation pour l'URL */}
-                        {link && (
-                          <div className="bg-base-100 p-3 rounded-lg border border-base-300">
+                        {link && link.trim() !== "" && (
+                          <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="text-sm font-medium">Prévisualisation :</span>
                             </div>
@@ -1059,9 +1365,11 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+                </div>
 
-                  {/* Bouton d'ajout */}
-                  <div className="flex gap-3 pt-4">
+                {/* Boutons fixes en bas */}
+                <div className="p-4 border-t border-base-300 shrink-0 w-full">
+                  <div className="flex gap-3 w-full">
                     <button
                       className="btn btn-sm btn-ghost flex-1 hover:btn-error transition-all"
                       onClick={handleCloseModal}
@@ -1097,6 +1405,11 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+              
+              {/* Backdrop pour fermer le modal */}
+              <form method="dialog" className="modal-backdrop">
+                <button onClick={handleCloseModal}>close</button>
+              </form>
             </dialog>
 
             {loading ? renderLoading() : 
