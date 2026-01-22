@@ -2,7 +2,7 @@
 import { SocialLink } from '@prisma/client'
 import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download, Heart } from 'lucide-react'
 import Link from 'next/link'
-import React, { FC, useState, useMemo, useEffect, useRef } from 'react'
+import React, { FC, useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import { SocialIcon } from 'react-social-icons'
 import { toggleSocialLinkActive, updateSocialdLink, incrementClickCount, toggleLike, getLikesCount, hasUserLiked } from '../server'
 import toast from 'react-hot-toast'
@@ -136,6 +136,93 @@ const isValidUrl = (url: string): boolean => {
 const isImageFile = (type: string) => type.startsWith('image/')
 const isPDFFile = (type: string) => type === 'application/pdf'
 
+// Component pour convertir les URLs en liens cliquables (memoïsé)
+const LinkifyText = memo(({ text }: { text: string }) => {
+  if (!text) return null;
+
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+  return (
+    <>
+      {text.split(urlRegex).map((part, index) =>
+        urlRegex.test(part) ? (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800 break-all"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+});
+
+LinkifyText.displayName = 'LinkifyText';
+
+// Preview de fichier (memoïsé)
+const FilePreview = memo(({ 
+  file, 
+  type,
+  url 
+}: { 
+  file?: File | null, 
+  type: 'image' | 'pdf',
+  url?: string 
+}) => {
+  const [imageUrl, setImageUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (type === 'image' && file) {
+      const url = URL.createObjectURL(file);
+      setImageUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [file, type]);
+
+  if (type === 'image') {
+    const src = imageUrl || url;
+    return (
+      <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-base-300">
+        {src ? (
+          <img 
+            src={src} 
+            alt="Preview"
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  if (type === 'pdf') {
+    return (
+      <div className="bg-base-200 p-4 rounded-xl border-2 border-base-300">
+        <div className="flex items-center gap-3">
+          <FileText className="w-10 h-10 text-red-500" />
+          <div>
+            <p className="font-medium">Document PDF</p>
+            <p className="text-sm opacity-70">Cliquez pour télécharger</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+});
+
+FilePreview.displayName = 'FilePreview';
+
 /* ------------------ COMPOSANT ------------------ */
 const LinkComponent: FC<LinkComponentProps> = ({
   socialLink,
@@ -162,9 +249,9 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const [clicks, setClicks] = useState(socialLink.clicks)
   const [borderColorIndex, setBorderColorIndex] = useState(0)
   
-  // États pour les likes
-  const [isLiked, setIsLiked] = useState(socialLink.isLikedByCurrentUser || false)
-  const [likesCount, setLikesCount] = useState(socialLink.likesCount || 0)
+  // États pour les likes - MAINTENANT UTILISÉS DIRECTEMENT DEPUIS LES PROPS
+  const isLiked = socialLink.isLikedByCurrentUser || false
+  const likesCount = socialLink.likesCount || 0
   const [isLiking, setIsLiking] = useState(false)
   
   const { user } = useUser()
@@ -182,20 +269,6 @@ const LinkComponent: FC<LinkComponentProps> = ({
     }, 4000)
     return () => clearInterval(interval)
   }, [])
-
-  // Charger les données de likes au montage
-  useEffect(() => {
-    const loadLikeData = async () => {
-      if (currentUserId) {
-        const liked = await hasUserLiked(socialLink.id, currentUserId)
-        setIsLiked(liked)
-      }
-      const count = await getLikesCount(socialLink.id)
-      setLikesCount(count)
-    }
-    
-    loadLikeData()
-  }, [socialLink.id, currentUserId])
 
   // 🎨 couleur dynamique basée sur l'ID pour consistance
   const colorIndex = useMemo(() => 
@@ -235,7 +308,17 @@ const LinkComponent: FC<LinkComponentProps> = ({
     return formData.url.startsWith('/uploads/') || selectedFile
   }, [formData.url, selectedFile])
 
-  const handleToggleLike = async () => {
+  // Déterminer le type de fichier
+  const fileType = useMemo(() => {
+    if (selectedFile) {
+      return isImageFile(selectedFile.type) ? 'image' : 'pdf';
+    }
+    if (formData.url.includes('.pdf')) return 'pdf';
+    if (isImageFile(formData.url)) return 'image';
+    return null;
+  }, [selectedFile, formData.url]);
+
+  const handleToggleLike = useCallback(async () => {
     if (!currentUserId) {
       toast.error('Vous devez être connecté pour liker')
       return
@@ -245,23 +328,36 @@ const LinkComponent: FC<LinkComponentProps> = ({
 
     setIsLiking(true)
     try {
-      const result = await toggleLike(socialLink.id, currentUserId)
-      
-      if (result.success) {
-        setIsLiked(!isLiked)
-        setLikesCount(result.likesCount || 0)
-      } else {
-        toast.error(result.message)
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ linkId: socialLink.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors du like');
       }
-    } catch (error) {
+
+      // Le parent doit gérer le re-fetch des données
+      if (fetchLinks) {
+        await fetchLinks();
+      }
+
+      // Mise à jour optimiste temporaire pour l'UX
+      toast.success(data.liked ? 'Lien liké ! ❤️' : 'Like retiré');
+    } catch (error: any) {
       console.error('Erreur lors du like:', error)
-      toast.error('Erreur lors du traitement du like')
+      toast.error(error.message || 'Erreur lors du traitement du like')
     } finally {
       setIsLiking(false)
     }
-  }
+  }, [currentUserId, isLiking, socialLink.id, fetchLinks])
 
-  const handleFileUpload = async () => {
+  const handleFileUpload = useCallback(async () => {
     if (!selectedFile) return
 
     // Limites de taille
@@ -275,9 +371,9 @@ const LinkComponent: FC<LinkComponentProps> = ({
     setUploadProgress(0)
 
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('linkId', socialLink.id)
+      const formDataObj = new FormData()
+      formDataObj.append('file', selectedFile)
+      formDataObj.append('linkId', socialLink.id)
 
       // Simuler la progression
       const progressInterval = setInterval(() => {
@@ -292,7 +388,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
 
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData,
+        body: formDataObj,
       })
 
       clearInterval(progressInterval)
@@ -337,9 +433,9 @@ const LinkComponent: FC<LinkComponentProps> = ({
     } finally {
       setIsUploading(false)
     }
-  }
+  }, [selectedFile, socialLink.id, formData, fetchLinks])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -354,37 +450,37 @@ const LinkComponent: FC<LinkComponentProps> = ({
 
     setSelectedFile(file)
     setUseFileUpload(true)
-  }
+  }, [])
 
-  const handleRemoveFile = () => {
+  const handleRemoveFile = useCallback(() => {
     setSelectedFile(null)
     setUseFileUpload(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }
+  }, [])
 
-  const handleSwitchToUrl = () => {
+  const handleSwitchToUrl = useCallback(() => {
     setSelectedFile(null)
     setUseFileUpload(false)
     setFormData(prev => ({ ...prev, url: '' }))
-  }
+  }, [])
 
-  const handleSwitchToFile = () => {
+  const handleSwitchToFile = useCallback(() => {
     setUseFileUpload(true)
     setFormData(prev => ({ ...prev, url: '' }))
-  }
+  }, [])
 
-  const handleIncrementClick = async () => {
+  const handleIncrementClick = useCallback(async () => {
     try {
       await incrementClickCount(socialLink.id)
-      setClicks(clicks + 1)
+      setClicks(prev => prev + 1)
     } catch (error){
       console.error(error)
     }
-  }
+  }, [socialLink.id])
 
-  const handleUpdatedLink = async () => {
+  const handleUpdatedLink = useCallback(async () => {
     // Si on utilise l'upload de fichier, l'URL n'est pas requise
     if (!formData.title || !formData.pseudo) {
       toast.error('Titre et pseudo sont requis')
@@ -430,9 +526,9 @@ const LinkComponent: FC<LinkComponentProps> = ({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [formData, useFileUpload, isUploadedFile, socialLink.id, fetchLinks])
 
-  const handleToggleActive = async () => {
+  const handleToggleActive = useCallback(async () => {
     try {
       await toggleSocialLinkActive(socialLink.id)
       setIsActive(!isActive)
@@ -442,9 +538,9 @@ const LinkComponent: FC<LinkComponentProps> = ({
       console.error(error)
       toast.error('Erreur lors de la modification')
     }
-  }
+  }, [socialLink.id, isActive, fetchLinks])
 
-  const handleRemove = async () => {
+  const handleRemove = useCallback(async () => {
     if (!onRemove || isDeleting) return
     
     // Remplacer window.confirm par un toast de confirmation
@@ -484,187 +580,600 @@ const LinkComponent: FC<LinkComponentProps> = ({
       duration: Infinity,
       position: 'top-center',
     });
-  }
+  }, [onRemove, isDeleting, socialLink.id])
 
-  // Convertit les URLs dans le texte en liens cliquables
-  const linkify = (text: string) => {
-    if (!text) return null;
+  const handleToggleDescription = useCallback(() => {
+    setLocalShowDescription(prev => !prev)
+  }, [])
 
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const handleFormChange = useCallback((field: keyof typeof formData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }, [])
 
-    return text.split(urlRegex).map((part, index) =>
-      urlRegex.test(part) ? (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false)
+    setFormData({
+      title: socialLink.title,
+      url: socialLink.url,
+      pseudo: socialLink.pseudo,
+      description: socialLink.description || '',
+    })
+    setSelectedFile(null)
+    setUseFileUpload(false)
+  }, [socialLink.title, socialLink.url, socialLink.pseudo, socialLink.description])
+
+  const renderYouTubePreview = useCallback((url: string) => {
+    const embedUrl = getYouTubeEmbedUrl(url)
+    if (!embedUrl) return null
+
+    return (
+      <div className="mt-4">
+        <p className="text-sm font-medium mb-2">Aperçu YouTube :</p>
+        <div className="relative w-full pt-[56.25%] rounded-lg overflow-hidden border-2 border-base-300">
+          <iframe
+            src={embedUrl}
+            title="Aperçu YouTube"
+            className="absolute top-0 left-0 w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            loading="lazy"
+          />
+        </div>
+      </div>
+    )
+  }, [])
+
+  const renderReadonlyView = useCallback(() => (
+    <div className={`flex flex-col p-4 sm:p-6 rounded-3xl w-full transition-all duration-300 overflow-hidden
+      ${isActive ? 'bg-gradient-to-br from-base-200 to-base-300 shadow-lg' : 'bg-base-300/50 opacity-70'}`}>
+      
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4 sm:gap-0">
+        <div className="flex items-center gap-3">
+          <div className={`relative ${COULEURS_BG[colorIndex]} p-2 rounded-2xl`}>
+            {isUploadedFile && isImageFile(socialLink.url) ? (
+              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                <Image className="w-4 h-4 text-white" />
+              </div>
+            ) : isUploadedFile && isPDFFile(socialLink.url) ? (
+              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
+                <FileText className="w-4 h-4 text-white" />
+              </div>
+            ) : (
+              <SocialIcon
+                url={socialLink.url}
+                style={getSocialIconStyle}
+                bgColor={socialColor}
+                className="transition-opacity hover:opacity-80"
+              />
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className={`font-bold text-sm ${COULEURS[colorIndex]} truncate`}>
+              {isUploadedFile 
+                ? (isImageFile(socialLink.url) ? 'Image' : 'Document PDF') 
+                : socialLink.title}
+            </span>
+            <span className="text-xs opacity-80 truncate">@{socialLink.pseudo}</span>
+          </div>
+        </div>
+        
+        {clicks > 0 && (
+          <div className={`flex items-center gap-1 px-3 py-1 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
+            <TrendingUp className="w-4 h-4" />
+            <span className="text-sm font-bold">{clicks}</span>
+            {isYouTubeUrl(socialLink.url) && (
+              <Link 
+                href={socialLink.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2"
+                onClick={isActive ? handleIncrementClick : undefined}
+              >
+                <ExternalLink className="w-4 h-4" />
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Aperçu pour les fichiers uploadés */}
+      {isUploadedFile && fileType && (
+        <div className="mb-4">
+          <FilePreview 
+            type={fileType} 
+            url={socialLink.url}
+          />
+        </div>
+      )}
+
+      {isYouTubeUrl(socialLink.url) && isActive && (
+        <div className="mb-4">
+          <div className="relative w-full pt-[56.25%]">
+            <iframe
+              src={getYouTubeEmbedUrl(socialLink.url)!}
+              frameBorder={0}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="absolute top-0 left-0 w-full h-full rounded-lg"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Affichage de la description en mode readonly */}
+      {socialLink.description && (
+        <div className="mb-4 bg-base-200/50 p-3 rounded-xl">
+          <p className="text-sm text-base-content whitespace-pre-wrap break-words">
+            <LinkifyText text={socialLink.description} />
+          </p>
+        </div>
+      )}
+
+      {isActive ? (
+        <Link
+          className={`btn w-full transition-all duration-300 group/link ${isUploadedFile ? 'btn-secondary' : 'btn-primary'} hover:scale-[1.02] hover:shadow-lg`}
+          href={socialLink.url}
+          target={isUploadedFile ? "_blank" : "_blank"}
           rel="noopener noreferrer"
-          className="text-blue-600 underline hover:text-blue-800 break-all"
+          onClick={handleIncrementClick}
         >
-          {part}
-        </a>
+          <span className="flex items-center justify-center gap-2">
+            {isUploadedFile 
+              ? (isPDFFile(socialLink.url) ? 'Télécharger le PDF' : 'Voir l\'image') 
+              : 'Visiter le lien'}
+            <ExternalLink className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
+          </span>
+        </Link>
       ) : (
-        part
-      )
-    );
-  }
+        <div
+          className={`btn w-full transition-all duration-300 btn-disabled`}
+        >
+          <span className="flex items-center justify-center gap-2">
+            Lien désactivé
+          </span>
+        </div>
+      )}
+
+      {/* Section likes en mode readonly */}
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-base-300">
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={handleToggleLike}
+            disabled={!currentUserId || readonly || isLiking}
+            title={!currentUserId ? "Connectez-vous pour liker" : ""}
+          >
+            {isLiking ? (
+              <span className="loading loading-spinner loading-xs" />
+            ) : (
+              <Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+            )}
+          </button>
+          <span className="text-sm text-gray-600">
+            {likesCount} like{likesCount !== 1 ? 's' : ''}
+          </span>
+        </div>
+        
+        {clicks > 0 && (
+          <div className="text-sm text-gray-600">
+            {clicks} clic{clicks !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+    </div>
+  ), [
+    isActive, socialLink, colorIndex, getSocialIconStyle, socialColor, 
+    clicks, borderColorIndex, isUploadedFile, fileType, currentUserId,
+    readonly, isLiked, likesCount, isLiking, handleIncrementClick, 
+    handleToggleLike
+  ])
+
+  const renderEditingView = useCallback(() => (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="form-control">
+          <label className="label">
+            <span className="label-text font-semibold">Type de contenu</span>
+          </label>
+          <select
+            className="select select-bordered w-full"
+            value={formData.title}
+            onChange={(e) => {
+              const value = e.target.value
+              handleFormChange('title', value)
+              // Si c'est un réseau social, passer en mode URL
+              if (value && value !== 'Image' && value !== 'Document PDF') {
+                setUseFileUpload(false)
+                setSelectedFile(null)
+              }
+            }}
+          >
+            <option value="">Sélectionner...</option>
+            <optgroup label="Fichiers">
+              <option value="Image">Image</option>
+              <option value="Document PDF">Document PDF</option>
+            </optgroup>
+            <optgroup label="Réseaux sociaux">
+              {socialLinksData.map(({ name }) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+
+        <div className="form-control">
+          <label className="label">
+            <span className="label-text font-semibold">Pseudo</span>
+          </label>
+          <input
+            type="text"
+            placeholder="Votre pseudo"
+            className="input input-bordered w-full"
+            value={formData.pseudo}
+            onChange={(e) => handleFormChange('pseudo', e.target.value)}
+          />
+        </div>
+
+        {/* Section Upload de fichier ou URL */}
+        <div className="form-control md:col-span-2">
+          <div className="flex gap-2 mb-4">
+            <button
+              type="button"
+              className={`btn btn-sm ${useFileUpload ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={handleSwitchToFile}
+            >
+              <Upload className="w-4 h-4" />
+              Uploader un fichier
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${!useFileUpload ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={handleSwitchToUrl}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Lien URL
+            </button>
+          </div>
+
+          {useFileUpload ? (
+            <div className="space-y-4">
+              {/* Input fichier */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,image/*"
+                onChange={handleFileChange}
+                className="file-input file-input-bordered w-full"
+                disabled={isUploading}
+              />
+
+              {/* Aperçu du fichier sélectionné */}
+              {selectedFile && (
+                <div className="mt-3 p-4 bg-base-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {isImageFile(selectedFile.type) ? (
+                        <Image className="w-6 h-6 text-blue-500" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-red-500" />
+                      )}
+                      <div>
+                        <span className="font-medium truncate">
+                          {selectedFile.name}
+                        </span>
+                        <span className="text-xs opacity-70 block">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {isImageFile(selectedFile.type) ? 'Image' : 'PDF'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRemoveFile}
+                      className="btn btn-ghost btn-xs"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Aperçu de l'image */}
+                  {selectedFile && isImageFile(selectedFile.type) && (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium mb-2">Aperçu :</p>
+                      <FilePreview 
+                        file={selectedFile} 
+                        type="image" 
+                      />
+                    </div>
+                  )}
+
+                  {/* Barre de progression */}
+                  {isUploading && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Upload en cours...</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <progress
+                        className="progress progress-primary w-full"
+                        value={uploadProgress}
+                        max="100"
+                      />
+                    </div>
+                  )}
+
+                  {/* Bouton d'upload */}
+                  {!isUploading && (
+                    <button
+                      onClick={handleFileUpload}
+                      className="btn btn-primary mt-4 w-full gap-2"
+                      disabled={isUploading}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Uploader le fichier
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="label">
+                <span className="label-text font-semibold">URL du lien</span>
+              </label>
+              <input
+                type="url"
+                placeholder="https://..."
+                className="input input-bordered w-full"
+                value={formData.url}
+                onChange={(e) => handleFormChange('url', e.target.value)}
+              />
+              
+              {/* Aperçu YouTube si c'est une URL YouTube */}
+              {formData.url && isYouTubeUrl(formData.url) && renderYouTubePreview(formData.url)}
+            </div>
+          )}
+        </div>
+
+        {/* Nouveau champ pour la description */}
+        <div className="form-control md:col-span-2">
+          <label className="label">
+            <span className="label-text font-semibold">Description</span>
+            <span className="label-text-alt">(Optionnel)</span>
+          </label>
+          <textarea
+            placeholder="Entrez la description"
+            className="textarea textarea-bordered w-full h-24"
+            value={formData.description}
+            onChange={(e) => handleFormChange('description', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+        <button
+          className="btn btn-ghost"
+          onClick={handleCancelEdit}
+          disabled={isLoading || isUploading}
+        >
+          Annuler
+        </button>
+        <button
+          className="btn btn-primary gap-2"
+          onClick={handleUpdatedLink}
+          disabled={isLoading || isUploading || (useFileUpload && !selectedFile && !isUploadedFile)}
+        >
+          {isLoading ? (
+            <span className="loading loading-spinner loading-sm" />
+          ) : (
+            <Check className="w-4 h-4" />
+          )}
+          Sauvegarder
+        </button>
+      </div>
+    </div>
+  ), [
+    formData, useFileUpload, selectedFile, isUploading, uploadProgress,
+    isUploadedFile, isLoading, handleFormChange, handleSwitchToFile,
+    handleSwitchToUrl, handleFileChange, handleRemoveFile, handleFileUpload,
+    renderYouTubePreview, handleCancelEdit, handleUpdatedLink
+  ])
+
+  const renderNonEditingView = useCallback(() => (
+    <>
+      {/* Contenu du lien */}
+      <div className="flex flex-col gap-4 p-4 bg-base-300/50 rounded-2xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex-shrink-0">
+            <div className={`p-3 rounded-2xl ${COULEURS_BG[colorIndex]}`}>
+              {isUploadedFile && fileType === 'image' ? (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                  <Image className="w-4 h-4 text-white" />
+                </div>
+              ) : isUploadedFile && fileType === 'pdf' ? (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+              ) : (
+                <SocialIcon
+                  url={formData.url}
+                  style={getSocialIconStyle}
+                  bgColor={socialColor}
+                />
+              )}
+            </div>
+          </div>
+          <div className="grow">
+            <h3 className="font-bold truncate">
+              {isUploadedFile 
+                ? (fileType === 'image' ? 'Image' : 'Document PDF') 
+                : socialLink.title}
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className="badge badge-sm badge-primary px-3 py-1 rounded-full shadow-sm truncate">
+                {isUploadedFile ? 'Fichier' : socialCategory}
+              </span>
+              <span className="badge badge-sm badge-accent px-3 py-1 rounded-full shadow-md hover:scale-105 transition-transform duration-200 truncate">
+                {socialLink.pseudo}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Aperçu de l'image uploadée */}
+        {isUploadedFile && fileType && (
+          <div className="mt-2">
+            <FilePreview 
+              type={fileType} 
+              url={formData.url}
+              file={selectedFile}
+            />
+          </div>
+        )}
+
+        {/* Aperçu YouTube */}
+        {isYouTubeUrl(formData.url) && isActive && (
+          <div className="relative w-full pt-[56.25%]">
+            <iframe
+              src={getYouTubeEmbedUrl(formData.url)!}
+              frameBorder={0}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="absolute top-0 left-0 w-full h-full rounded-lg"
+              loading="lazy"
+            />
+          </div>
+        )}
+
+        {/* Bouton pour afficher/cacher la description */}
+        {formData.description && (
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-xs btn-ghost gap-1"
+                onClick={handleToggleDescription}
+              >
+                {localShowDescription ? (
+                  <>
+                    <EyeOff className="w-3 h-3" />
+                    <span className="text-xs">Cacher description</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3 h-3" />
+                    <span className="text-xs">Afficher description</span>
+                  </>
+                )}
+              </button>
+              <span className="text-xs text-gray-500">
+                {formData.description.length} caractères
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Affichage de la description avec liens cliquables */}
+        {formData.description && localShowDescription && (
+          <div className="mt-3 bg-base-200/50 p-3 rounded-xl border border-base-300">
+            <p className="text-sm text-base-content whitespace-pre-wrap break-words">
+              <LinkifyText text={formData.description} />
+            </p>
+          </div>
+        )}
+
+        <div className="tooltip" data-tip={formData.url}>
+          <Link
+            href={formData.url}
+            target={isUploadedFile ? "_blank" : "_blank"}
+            rel="noopener noreferrer"
+            className="link link-hover text-sm opacity-90 flex items-center gap-1 mt-2"
+            onClick={isActive ? handleIncrementClick : undefined}
+          >
+            <span className="truncate">
+              {isUploadedFile 
+                ? (fileType === 'pdf'
+                    ? '📄 Voir le document PDF' 
+                    : '🖼️ Voir l\'image') 
+                : truncateLink(formData.url, 30)}
+            </span>
+            {isUploadedFile && fileType === 'pdf' ? (
+              <Download className="w-3 h-3" />
+            ) : (
+              <ExternalLink className="w-3 h-3" />
+            )}
+          </Link>
+        </div>
+      </div>
+
+      {/* Footer avec stats, likes et actions */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 border-t border-base-300 gap-4 sm:gap-0">
+        <div className="flex items-center gap-4">
+          {/* Bouton like */}
+          <div className="tooltip" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "Retirer le like" : "Ajouter un like"}>
+            <button
+              className="btn btn-ghost btn-sm gap-2"
+              onClick={handleToggleLike}
+              disabled={isLiking || !currentUserId}
+            >
+              {isLiking ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : (
+                <Heart className={`w-4 h-4 transition-all ${isLiked ? 'fill-red-500 text-red-500 animate-pulse' : ''}`} />
+              )}
+              <span className={isLiked ? 'text-red-500 font-semibold' : ''}>
+                {likesCount}
+              </span>
+            </button>
+          </div>
+
+          {/* Compteur de clics */}
+          {clicks > 0 && (
+            <div className="tooltip" data-tip="Nombre de clics">
+              <div className={`flex items-center gap-2 px-3 py-2 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
+                <ChartColumnIncreasing className="w-4 h-4" />
+                <span className="font-bold text-lg">{clicks}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button
+            className="btn btn-sm btn-primary text-white gap-2 group/edit w-full sm:w-auto"
+            onClick={() => setIsEditing(true)}
+          >
+            <Pencil className="w-4 h-4 group-hover/edit:rotate-12 transition-transform" />
+            Éditer
+          </button>
+
+          <button
+            className="btn btn-sm btn-error text-white gap-2 group/delete w-full sm:w-auto"
+            onClick={handleRemove}
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <span className="loading loading-spinner loading-sm" />
+            ) : (
+              <Trash className="w-4 h-4 group-hover/delete:scale-110 transition-transform" />
+            )}
+            Supprimer
+          </button>
+        </div>
+      </div>
+    </>
+  ), [
+    colorIndex, formData, socialLink.title, socialCategory, socialLink.pseudo,
+    isUploadedFile, fileType, selectedFile, isActive, localShowDescription,
+    currentUserId, isLiked, likesCount, isLiking, clicks, borderColorIndex,
+    isDeleting, getSocialIconStyle, socialColor, handleToggleDescription,
+    handleToggleLike, handleIncrementClick, handleRemove
+  ])
 
   return (
     <div className="group relative">
       {readonly ? (
-        <div className={`flex flex-col p-4 sm:p-6 rounded-3xl w-full transition-all duration-300 overflow-hidden
-          ${isActive ? 'bg-gradient-to-br from-base-200 to-base-300 shadow-lg' : 'bg-base-300/50 opacity-70'}`}>
-          
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4 sm:gap-0">
-            <div className="flex items-center gap-3">
-              <div className={`relative ${COULEURS_BG[colorIndex]} p-2 rounded-2xl`}>
-                {isUploadedFile && isImageFile(socialLink.url) ? (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                    <Image className="w-4 h-4 text-white" />
-                  </div>
-                ) : isUploadedFile && isPDFFile(socialLink.url) ? (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-white" />
-                  </div>
-                ) : (
-                  <SocialIcon
-                    url={socialLink.url}
-                    style={getSocialIconStyle}
-                    bgColor={socialColor}
-                    className="transition-opacity hover:opacity-80"
-                  />
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span className={`font-bold text-sm ${COULEURS[colorIndex]} truncate`}>
-                  {isUploadedFile 
-                    ? (isImageFile(socialLink.url) ? 'Image' : 'Document PDF') 
-                    : socialLink.title}
-                </span>
-                <span className="text-xs opacity-80 truncate">@{socialLink.pseudo}</span>
-              </div>
-            </div>
-            
-            {clicks > 0 && (
-              <div className={`flex items-center gap-1 px-3 py-1 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
-                <TrendingUp className="w-4 h-4" />
-                <span className="text-sm font-bold">{clicks}</span>
-                {isYouTubeUrl(socialLink.url) && (
-                  <Link 
-                    href={socialLink.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="ml-2"
-                    onClick={isActive ? handleIncrementClick : undefined}
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </Link>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Aperçu pour les fichiers uploadés */}
-          {isUploadedFile && isImageFile(socialLink.url) && (
-            <div className="mb-4">
-              <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-base-300">
-                <img 
-                  src={socialLink.url} 
-                  alt="Image uploadée"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {isUploadedFile && isPDFFile(socialLink.url) && (
-            <div className="mb-4">
-              <div className="bg-base-200 p-4 rounded-xl border-2 border-base-300">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-10 h-10 text-red-500" />
-                  <div>
-                    <p className="font-medium">Document PDF</p>
-                    <p className="text-sm opacity-70">Cliquez pour télécharger</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isYouTubeUrl(socialLink.url) && isActive && (
-            <div className="mb-4">
-              <div className="relative w-full pt-[56.25%]">
-                <iframe
-                  src={getYouTubeEmbedUrl(socialLink.url)!}
-                  frameBorder={0}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="absolute top-0 left-0 w-full h-full rounded-lg"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Affichage de la description en mode readonly */}
-          {socialLink.description && (
-            <div className="mb-4 bg-base-200/50 p-3 rounded-xl">
-              <p className="text-sm text-base-content whitespace-pre-wrap break-words">
-                {linkify(socialLink.description)}
-              </p>
-            </div>
-          )}
-
-          {isActive ? (
-            <Link
-              className={`btn w-full transition-all duration-300 group/link ${isUploadedFile ? 'btn-secondary' : 'btn-primary'} hover:scale-[1.02] hover:shadow-lg`}
-              href={socialLink.url}
-              target={isUploadedFile ? "_blank" : "_blank"}
-              rel="noopener noreferrer"
-              onClick={handleIncrementClick}
-            >
-              <span className="flex items-center justify-center gap-2">
-                {isUploadedFile 
-                  ? (isPDFFile(socialLink.url) ? 'Télécharger le PDF' : 'Voir l\'image') 
-                  : 'Visiter le lien'}
-                <ExternalLink className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
-              </span>
-            </Link>
-          ) : (
-            <div
-              className={`btn w-full transition-all duration-300 btn-disabled`}
-            >
-              <span className="flex items-center justify-center gap-2">
-                Lien désactivé
-              </span>
-            </div>
-          )}
-
-          {/* Section likes en mode readonly */}
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-base-300">
-            <div className="flex items-center gap-2">
-              <button
-                className="btn btn-ghost btn-xs"
-                onClick={handleToggleLike}
-                disabled={!currentUserId || readonly}
-                title={!currentUserId ? "Connectez-vous pour liker" : ""}
-              >
-                <Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-              </button>
-              <span className="text-sm text-gray-600">
-                {likesCount} like{likesCount !== 1 ? 's' : ''}
-              </span>
-            </div>
-            
-            {clicks > 0 && (
-              <div className="text-sm text-gray-600">
-                {clicks} clic{clicks !== 1 ? 's' : ''}
-              </div>
-            )}
-          </div>
-        </div>
+        renderReadonlyView()
       ) : (
         <div className={`flex flex-col w-full p-4 sm:p-6 rounded-3xl gap-4 transition-all duration-300 overflow-hidden
           ${isActive 
@@ -702,448 +1211,11 @@ const LinkComponent: FC<LinkComponentProps> = ({
             </div>
           </div>
 
-          {isEditing ? (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-semibold">Type de contenu</span>
-                  </label>
-                  <select
-                    className="select select-bordered w-full"
-                    value={formData.title}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setFormData({ ...formData, title: value })
-                      // Si c'est un réseau social, passer en mode URL
-                      if (value && value !== 'Image' && value !== 'Document PDF') {
-                        setUseFileUpload(false)
-                        setSelectedFile(null)
-                      }
-                    }}
-                  >
-                    <option value="">Sélectionner...</option>
-                    <optgroup label="Fichiers">
-                      <option value="Image">Image</option>
-                      <option value="Document PDF">Document PDF</option>
-                    </optgroup>
-                    <optgroup label="Réseaux sociaux">
-                      {socialLinksData.map(({ name }) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-semibold">Pseudo</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Votre pseudo"
-                    className="input input-bordered w-full"
-                    value={formData.pseudo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, pseudo: e.target.value })
-                    }
-                  />
-                </div>
-
-                {/* Section Upload de fichier ou URL */}
-                <div className="form-control md:col-span-2">
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${useFileUpload ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={handleSwitchToFile}
-                    >
-                      <Upload className="w-4 h-4" />
-                      Uploader un fichier
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${!useFileUpload ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={handleSwitchToUrl}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Lien URL
-                    </button>
-                  </div>
-
-                  {useFileUpload ? (
-                    <div className="space-y-4">
-                      {/* Input fichier */}
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".pdf,image/*"
-                        onChange={handleFileChange}
-                        className="file-input file-input-bordered w-full"
-                        disabled={isUploading}
-                      />
-
-                      {/* Aperçu du fichier sélectionné */}
-                      {selectedFile && (
-                        <div className="mt-3 p-4 bg-base-200 rounded-xl">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              {isImageFile(selectedFile.type) ? (
-                                <Image className="w-6 h-6 text-blue-500" />
-                              ) : (
-                                <FileText className="w-6 h-6 text-red-500" />
-                              )}
-                              <div>
-                                <span className="font-medium truncate">
-                                  {selectedFile.name}
-                                </span>
-                                <span className="text-xs opacity-70 block">
-                                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {isImageFile(selectedFile.type) ? 'Image' : 'PDF'}
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={handleRemoveFile}
-                              className="btn btn-ghost btn-xs"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Aperçu de l'image */}
-                          {selectedFile && isImageFile(selectedFile.type) && (
-                            <div className="mt-3">
-                              <p className="text-sm font-medium mb-2">Aperçu :</p>
-                              <div className="relative w-full h-48 rounded-lg overflow-hidden border-2 border-base-300">
-                                <img 
-                                  src={URL.createObjectURL(selectedFile)} 
-                                  alt="Aperçu de l'image"
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Barre de progression */}
-                          {isUploading && (
-                            <div className="mt-4">
-                              <div className="flex justify-between text-sm mb-1">
-                                <span>Upload en cours...</span>
-                                <span>{uploadProgress}%</span>
-                              </div>
-                              <progress
-                                className="progress progress-primary w-full"
-                                value={uploadProgress}
-                                max="100"
-                              />
-                            </div>
-                          )}
-
-                          {/* Bouton d'upload */}
-                          {!isUploading && (
-                            <button
-                              onClick={handleFileUpload}
-                              className="btn btn-primary mt-4 w-full gap-2"
-                              disabled={isUploading}
-                            >
-                              <Upload className="w-4 h-4" />
-                              Uploader le fichier
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="label">
-                        <span className="label-text font-semibold">URL du lien</span>
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://..."
-                        className="input input-bordered w-full"
-                        value={formData.url}
-                        onChange={(e) =>
-                          setFormData({ ...formData, url: e.target.value })
-                        }
-                      />
-                      
-                      {/* Aperçu YouTube si c'est une URL YouTube */}
-                      {formData.url && isYouTubeUrl(formData.url) && (
-                        <div className="mt-4">
-                          <p className="text-sm font-medium mb-2">Aperçu YouTube :</p>
-                          <div className="relative w-full pt-[56.25%] rounded-lg overflow-hidden border-2 border-base-300">
-                            <iframe
-                              src={getYouTubeEmbedUrl(formData.url)!}
-                              title="Aperçu YouTube"
-                              className="absolute top-0 left-0 w-full h-full"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Nouveau champ pour la description */}
-                <div className="form-control md:col-span-2">
-                  <label className="label">
-                    <span className="label-text font-semibold">Description</span>
-                    <span className="label-text-alt">(Optionnel)</span>
-                  </label>
-                  <textarea
-                    placeholder="Entrez la description"
-                    className="textarea textarea-bordered w-full h-24"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setIsEditing(false)
-                    setFormData({
-                      title: socialLink.title,
-                      url: socialLink.url,
-                      pseudo: socialLink.pseudo,
-                      description: socialLink.description || '',
-                    })
-                    setSelectedFile(null)
-                    setUseFileUpload(false)
-                  }}
-                  disabled={isLoading || isUploading}
-                >
-                  Annuler
-                </button>
-                <button
-                  className="btn btn-primary gap-2"
-                  onClick={handleUpdatedLink}
-                  disabled={isLoading || isUploading || (useFileUpload && !selectedFile && !isUploadedFile)}
-                >
-                  {isLoading ? (
-                    <span className="loading loading-spinner loading-sm" />
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
-                  Sauvegarder
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Contenu du lien */}
-              <div className="flex flex-col gap-4 p-4 bg-base-300/50 rounded-2xl">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                  <div className="flex-shrink-0">
-                    <div className={`p-3 rounded-2xl ${COULEURS_BG[colorIndex]}`}>
-                      {isUploadedFile && isImageFile(formData.url) ? (
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                          <Image className="w-4 h-4 text-white" />
-                        </div>
-                      ) : isUploadedFile && isPDFFile(formData.url) ? (
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-white" />
-                        </div>
-                      ) : (
-                        <SocialIcon
-                          url={formData.url}
-                          style={getSocialIconStyle}
-                          bgColor={socialColor}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="grow">
-                    <h3 className="font-bold truncate">
-                      {isUploadedFile 
-                        ? (isImageFile(formData.url) ? 'Image' : 'Document PDF') 
-                        : socialLink.title}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="badge badge-sm badge-primary px-3 py-1 rounded-full shadow-sm truncate">
-                        {isUploadedFile ? 'Fichier' : socialCategory}
-                      </span>
-                      <span className="badge badge-sm badge-accent px-3 py-1 rounded-full shadow-md hover:scale-105 transition-transform duration-200 truncate">
-                        {socialLink.pseudo}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Aperçu de l'image uploadée */}
-                {isUploadedFile && isImageFile(formData.url) && (
-                  <div className="mt-2">
-                    <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-base-300">
-                      <img 
-                        src={formData.url} 
-                        alt="Image uploadée"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none'
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Aperçu PDF */}
-                {isUploadedFile && isPDFFile(formData.url) && (
-                  <div className="mt-2">
-                    <div className="bg-base-200 p-4 rounded-xl border-2 border-base-300">
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-10 h-10 text-red-500" />
-                        <div>
-                          <p className="font-medium">Document PDF</p>
-                          <p className="text-sm opacity-70">Cliquez pour télécharger</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Aperçu YouTube */}
-                {isYouTubeUrl(formData.url) && isActive && (
-                  <div className="relative w-full pt-[56.25%]">
-                    <iframe
-                      src={getYouTubeEmbedUrl(formData.url)!}
-                      frameBorder={0}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      className="absolute top-0 left-0 w-full h-full rounded-lg"
-                    />
-                  </div>
-                )}
-
-                {/* Bouton pour afficher/cacher la description */}
-                {formData.description && (
-                  <div className="flex items-center justify-between mt-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="btn btn-xs btn-ghost gap-1"
-                        onClick={() => setLocalShowDescription(!localShowDescription)}
-                      >
-                        {localShowDescription ? (
-                          <>
-                            <EyeOff className="w-3 h-3" />
-                            <span className="text-xs">Cacher description</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            <span className="text-xs">Afficher description</span>
-                          </>
-                        )}
-                      </button>
-                      <span className="text-xs text-gray-500">
-                        {formData.description.length} caractères
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Affichage de la description avec liens cliquables */}
-                {formData.description && localShowDescription && (
-                  <div className="mt-3 bg-base-200/50 p-3 rounded-xl border border-base-300">
-                    <p className="text-sm text-base-content whitespace-pre-wrap break-words">
-                      {linkify(formData.description)}
-                    </p>
-                  </div>
-                )}
-
-                <div className="tooltip" data-tip={formData.url}>
-                  <Link
-                    href={formData.url}
-                    target={isUploadedFile ? "_blank" : "_blank"}
-                    rel="noopener noreferrer"
-                    className="link link-hover text-sm opacity-90 flex items-center gap-1 mt-2"
-                    onClick={isActive ? handleIncrementClick : undefined}
-                  >
-                    <span className="truncate">
-                      {isUploadedFile 
-                        ? (isPDFFile(formData.url) 
-                            ? '📄 Voir le document PDF' 
-                            : '🖼️ Voir l\'image') 
-                        : truncateLink(formData.url, 30)}
-                    </span>
-                    {isUploadedFile && isPDFFile(formData.url) ? (
-                      <Download className="w-3 h-3" />
-                    ) : (
-                      <ExternalLink className="w-3 h-3" />
-                    )}
-                  </Link>
-                </div>
-              </div>
-
-              {/* Footer avec stats, likes et actions */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 border-t border-base-300 gap-4 sm:gap-0">
-                <div className="flex items-center gap-4">
-                  {/* Bouton like */}
-                  <div className="tooltip" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "Retirer le like" : "Ajouter un like"}>
-                    <button
-                      className="btn btn-ghost btn-sm gap-2"
-                      onClick={handleToggleLike}
-                      disabled={isLiking || !currentUserId}
-                    >
-                      {isLiking ? (
-                        <span className="loading loading-spinner loading-xs" />
-                      ) : (
-                        <Heart className={`w-4 h-4 transition-all ${isLiked ? 'fill-red-500 text-red-500 animate-pulse' : ''}`} />
-                      )}
-                      <span className={isLiked ? 'text-red-500 font-semibold' : ''}>
-                        {likesCount}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Compteur de clics */}
-                  {clicks > 0 && (
-                    <div className="tooltip" data-tip="Nombre de clics">
-                      <div className={`flex items-center gap-2 px-3 py-2 bg-base-300 rounded-full border-2 ${BORDER_COULEURS[borderColorIndex]} transition-colors duration-500`}>
-                        <ChartColumnIncreasing className="w-4 h-4" />
-                        <span className="font-bold text-lg">{clicks}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <button
-                    className="btn btn-sm btn-primary text-white gap-2 group/edit w-full sm:w-auto"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    <Pencil className="w-4 h-4 group-hover/edit:rotate-12 transition-transform" />
-                    Éditer
-                  </button>
-
-                  <button
-                    className="btn btn-sm btn-error text-white gap-2 group/delete w-full sm:w-auto"
-                    onClick={handleRemove}
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? (
-                      <span className="loading loading-spinner loading-sm" />
-                    ) : (
-                      <Trash className="w-4 h-4 group-hover/delete:scale-110 transition-transform" />
-                    )}
-                    Supprimer
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {isEditing ? renderEditingView() : renderNonEditingView()}
         </div>
       )}
     </div>
   )
 }
 
-export default LinkComponent
+export default memo(LinkComponent)

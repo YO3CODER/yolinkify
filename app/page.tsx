@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Wrapper from "./components/Wrapper";
 import { useUser } from "@clerk/nextjs";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, memo, useMemo } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
 import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles } from "lucide-react";
@@ -13,12 +13,14 @@ import EmptyState from "./components/EmptyState";
 import LinkComponent from "./components/LinkComponent";
 import Visualisation from "./components/Visualisation";
 
-const truncateLink = (url: string, maxLenght = 20) => {
-  return url.length > maxLenght
-    ? url.substring(0, maxLenght) + "..."
+// Mémoïsation de la fonction de troncature
+const truncateLink = (url: string, maxLength = 20) => {
+  return url.length > maxLength
+    ? url.substring(0, maxLength) + "..."
     : url;
 };
 
+// Mémoïsation de la validation d'URL
 const isValidURL = (url: string) => {
   try {
     const parsedUrl = new URL(url);
@@ -32,16 +34,29 @@ const isValidURL = (url: string) => {
 const isImageFile = (file: File) => file.type.startsWith('image/');
 const isPDFFile = (file: File) => file.type === 'application/pdf';
 
-// Composant de prévisualisation pour fichiers
-const FilePreview = ({ file, type }: { file: File, type: 'image' | 'pdf' }) => {
+// Composant de prévisualisation pour fichiers (memoïsé)
+const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' }) => {
+  const [imageUrl, setImageUrl] = useState<string>('');
+  
+  useEffect(() => {
+    if (type === 'image') {
+      const url = URL.createObjectURL(file);
+      setImageUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [file, type]);
+
   if (type === 'image') {
     return (
       <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-base-300">
-        <img 
-          src={URL.createObjectURL(file)} 
-          alt="Aperçu de l'image"
-          className="w-full h-full object-contain"
-        />
+        {imageUrl && (
+          <img 
+            src={imageUrl} 
+            alt="Aperçu de l'image"
+            className="w-full h-full object-contain"
+            loading="lazy"
+          />
+        )}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
           <div className="flex items-center gap-2 text-white">
             <ImageIcon className="w-4 h-4" />
@@ -82,10 +97,12 @@ const FilePreview = ({ file, type }: { file: File, type: 'image' | 'pdf' }) => {
   }
 
   return null;
-};
+});
 
-// Composant de prévisualisation pour URL
-const UrlPreview = ({ url }: { url: string }) => {
+FilePreview.displayName = 'FilePreview';
+
+// Composant de prévisualisation pour URL (memoïsé)
+const UrlPreview = memo(({ url }: { url: string }) => {
   const [previewType, setPreviewType] = useState<'none' | 'youtube' | 'image' | 'pdf'>('none');
   
   useEffect(() => {
@@ -100,7 +117,7 @@ const UrlPreview = ({ url }: { url: string }) => {
     }
   }, [url]);
 
-  const getYoutubeVideoId = (url: string): string | null => {
+  const getYoutubeVideoId = useCallback((url: string): string | null => {
     try {
       const parsedUrl = new URL(url);
       if (parsedUrl.hostname.includes("youtu.be")) {
@@ -113,7 +130,7 @@ const UrlPreview = ({ url }: { url: string }) => {
     } catch {
       return null;
     }
-  };
+  }, []);
 
   if (previewType === 'youtube') {
     const videoId = getYoutubeVideoId(url);
@@ -127,6 +144,7 @@ const UrlPreview = ({ url }: { url: string }) => {
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           className="absolute inset-0 w-full h-full"
+          loading="lazy"
         />     
       </div>
     );
@@ -139,6 +157,7 @@ const UrlPreview = ({ url }: { url: string }) => {
           src={url} 
           alt="Aperçu de l'image"
           className="w-full h-full object-contain"
+          loading="lazy"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = 'none';
           }}
@@ -181,12 +200,31 @@ const UrlPreview = ({ url }: { url: string }) => {
   }
 
   return null;
-};
+});
+
+UrlPreview.displayName = 'UrlPreview';
 
 interface SocialLinkWithLikes extends SocialLink {
   likesCount?: number;
   isLikedByCurrentUser?: boolean;
 }
+
+// Hook personnalisé pour le debounce
+const useDebounce = <T,>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 export default function Home() {
   const { user } = useUser();
@@ -201,7 +239,6 @@ export default function Home() {
   const [socialDescription, setSocialDescription] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
   const [links, setLinks] = useState<SocialLinkWithLikes[]>([]);
-  const [filteredLinks, setFilteredLinks] = useState<SocialLinkWithLikes[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showDescription, setShowDescription] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -213,28 +250,34 @@ export default function Home() {
   const [useFileUpload, setUseFileUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const themes = [
+  // Debounce pour la recherche
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const isFirstRender = useRef(true);
+
+  // Thèmes memoïsés
+  const themes = useMemo(() => [
     "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro",
     "cyberpunk", "caramellatte", "halloween", "garden", "forest", "aqua", "lofi", "pastel",
     "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business",
     "acid", "lemonade", "coffee", "winter", "dim", "nord", "sunset", "valentine", "abyss", "silk"
-  ];
+  ], []);
 
-  // Fonction pour rafraîchir les liens (avec useCallback pour éviter des re-renders inutiles)
+  // Données des liens sociaux memoïsées
+  const socialLinksDataMemo = useMemo(() => socialLinksData, []);
+
+  // Fonction pour rafraîchir les liens
   const fetchLinks = useCallback(async () => {
     try {
       const userInfo = await getUserInfo(email);
       if (userInfo) {
         setPseudo(userInfo.pseudo);
         setTheme(userInfo.theme);
-        setTheme2(userInfo.theme)
+        setTheme2(userInfo.theme);
       }
 
-      // Utiliser la nouvelle fonction qui inclut les likes
       const fetchedLinks = await getSocialLinksWithLikes(email, currentUserId);
       if (fetchedLinks) {
         setLinks(fetchedLinks);
-        setFilteredLinks(fetchedLinks);
       }
       setLoading(false);
     } catch (error) {
@@ -244,24 +287,24 @@ export default function Home() {
   }, [email, currentUserId]);
 
   // Filtrer les liens en fonction de la recherche
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredLinks(links);
-    } else {
-      const filtered = links.filter(link => {
-        const url = link.url || "";
-        const description = link.description || "";
-        
-        return (
-          (link.title && link.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (link.pseudo && link.pseudo.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (url.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (description.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-      });
-      setFilteredLinks(filtered);
+  const filteredLinks = useMemo(() => {
+    if (debouncedSearchQuery.trim() === "") {
+      return links;
     }
-  }, [searchQuery, links]);
+    
+    const query = debouncedSearchQuery.toLowerCase();
+    return links.filter(link => {
+      const url = link.url || "";
+      const description = link.description || "";
+      
+      return (
+        (link.title && link.title.toLowerCase().includes(query)) ||
+        (link.pseudo && link.pseudo.toLowerCase().includes(query)) ||
+        (url.toLowerCase().includes(query)) ||
+        (description.toLowerCase().includes(query))
+      );
+    });
+  }, [debouncedSearchQuery, links]);
 
   // Réinitialiser les états du fichier quand on change de type
   useEffect(() => {
@@ -273,7 +316,7 @@ export default function Home() {
   }, [title]);
 
   // Gérer la sélection de fichier
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -296,10 +339,10 @@ export default function Home() {
 
     setSelectedFile(file);
     setUseFileUpload(true);
-  };
+  }, [title]);
 
   // Upload du fichier
-  const handleFileUpload = async () => {
+  const handleFileUpload = useCallback(async () => {
     if (!selectedFile) return;
 
     setIsUploading(true);
@@ -364,22 +407,22 @@ export default function Home() {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [selectedFile, email, title, socialPseudo, socialDescription, fetchLinks]);
 
   // Réinitialiser le formulaire
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setLink("");
     setSocialPseudo("");
     setSocialDescription("");
-    setTitle(socialLinksData[0].name);
+    setTitle(socialLinksDataMemo[0].name);
     setSelectedFile(null);
     setUseFileUpload(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, [socialLinksDataMemo]);
 
-  const handleAddLink = async () => {
+  const handleAddLink = useCallback(async () => {
     // Validation pour l'upload de fichier
     if (useFileUpload && selectedFile) {
       await handleFileUpload();
@@ -404,7 +447,7 @@ export default function Home() {
 
     // Validation spécifique pour les réseaux sociaux
     if (title !== "Image" && title !== "Document PDF") {
-      const selectedTitle = socialLinksData.find(l => l.name === title);
+      const selectedTitle = socialLinksDataMemo.find(l => l.name === title);
       if (selectedTitle?.root && selectedTitle.altRoot) {
         if (
           !link.startsWith(selectedTitle.root) &&
@@ -436,10 +479,10 @@ export default function Home() {
       console.error(error);
       toast.error("Erreur lors de l'ajout du lien");
     }
-  };
+  }, [useFileUpload, selectedFile, handleFileUpload, link, title, socialPseudo, socialLinksDataMemo, email, fetchLinks, resetForm]);
 
   // Fonction pour uploader le fichier et retourner l'URL
-  const uploadFile = async (): Promise<string> => {
+  const uploadFile = useCallback(async (): Promise<string> => {
     if (!selectedFile) throw new Error("Aucun fichier sélectionné");
 
     const formData = new FormData();
@@ -453,9 +496,9 @@ export default function Home() {
     if (!response.ok) throw new Error('Upload échoué');
     const data = await response.json();
     return data.url;
-  };
+  }, [selectedFile]);
 
-  const handleRemoveLink = async (linkId: string) => {
+  const handleRemoveLink = useCallback(async (linkId: string) => {
     try {
       await removeSocialLink(email, linkId);
       // Rafraîchir les liens après la suppression
@@ -464,20 +507,21 @@ export default function Home() {
       console.error(error);
       toast.error("Erreur lors de la suppression");
     }
-  };
+  }, [email, fetchLinks]);
 
-  // Fonction pour rafraîchir les liens (à passer aux composants enfants)
-  const handleRefreshLinks = async () => {
+  // Fonction pour rafraîchir les liens
+  const handleRefreshLinks = useCallback(async () => {
     await fetchLinks();
-  };
+  }, [fetchLinks]);
 
   useEffect(() => {
-    if (email) {
+    if (email && isFirstRender.current) {
       fetchLinks();
+      isFirstRender.current = false;
     }
-  }, [email, fetchLinks]); // Ajout de fetchLinks dans les dépendances
+  }, [email, fetchLinks]);
 
-  const copyToClipboard = () => {
+  const copyToClipboard = useCallback(() => {
     if (!pseudo) return;
 
     const url = `yolinkify.vercel.app/page/${pseudo}`;
@@ -485,9 +529,9 @@ export default function Home() {
       .writeText(url)
       .then(() => toast.success("Lien copié"))
       .catch(err => console.error("Erreur lors de la copie :", err));
-  };
+  }, [pseudo]);
 
-  const handleConfirmTheme = async () =>{
+  const handleConfirmTheme = useCallback(async () => {
     try {
       if(theme){
          await updateUserTheme(email , theme)
@@ -498,10 +542,102 @@ export default function Home() {
       console.error(error)
       toast.error("Erreur lors de l'application du thème");
     }
-  }
+  }, [theme, email]);
 
-  // Calculer le total des likes
-  const totalLikes = links.reduce((total, link) => total + (link.likesCount || 0), 0);
+  // Calculer le total des likes avec useMemo
+  const totalLikes = useMemo(() => 
+    links.reduce((total, link) => total + (link.likesCount || 0), 0),
+    [links]
+  );
+
+  // Calculer les liens avec description
+  const linksWithDescriptionCount = useMemo(() => 
+    links.filter(l => l.description && l.description.trim() !== "").length,
+    [links]
+  );
+
+  // Handlers memoïsés
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  const handleToggleDescriptionFilter = useCallback(() => {
+    setShowDescription(prev => !prev);
+  }, []);
+
+  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setTitle(e.target.value);
+  }, []);
+
+  const handleSocialPseudoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSocialPseudo(e.target.value);
+  }, []);
+
+  const handleSocialDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setSocialDescription(e.target.value);
+  }, []);
+
+  const handleLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLink(e.target.value);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    const modal = document.getElementById("social_links_form") as HTMLDialogElement;
+    if (modal) modal.close();
+    resetForm();
+  }, [resetForm]);
+
+  const handleOpenModal = useCallback(() => {
+    const modal = document.getElementById("social_links_form") as HTMLDialogElement;
+    if (modal) modal.showModal();
+  }, []);
+
+  // Composants de rendu conditionnel
+  const renderLoading = () => (
+    <div className="my-8 flex justify-center items-center w-full">
+      <div className="flex flex-col items-center gap-2">
+        <span className="loading loading-spinner loading-md text-primary"></span>
+        <p className="text-sm text-base-content/70">Chargement...</p>
+      </div>
+    </div>
+  );
+
+  const renderEmptyState = () => (
+    <div className="flex flex-col items-center justify-center w-full py-8 bg-base-100 rounded-xl border border-dashed border-base-300">
+      <EmptyState IconComponent={"Cable"} message={
+        debouncedSearchQuery ? 
+        "Aucun lien ne correspond à votre recherche 😭" : 
+        "Aucun lien disponible ! 😭"
+      } />
+      {debouncedSearchQuery && (
+        <button
+          className="btn btn-sm btn-outline mt-3 hover:btn-primary transition-all"
+          onClick={handleClearSearch}
+        >
+          Effacer la recherche
+        </button>
+      )}
+    </div>
+  );
+
+  const renderLinksList = () => (
+    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
+      {filteredLinks.map(link => (
+        <LinkComponent
+          key={link.id}
+          socialLink={link}
+          onRemove={handleRemoveLink}
+          readonly={false}
+          fetchLinks={handleRefreshLinks}
+          showDescription={showDescription}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <Wrapper>
@@ -613,7 +749,7 @@ export default function Home() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="opacity-70">Liens avec description:</span>
                         <span className="font-semibold">
-                          {links.filter(l => l.description && l.description.trim() !== "").length}
+                          {linksWithDescriptionCount}
                         </span>
                       </div>
                     </div>
@@ -692,13 +828,13 @@ export default function Home() {
                            focus:ring-1 focus:ring-primary/20 focus:border-primary
                            transition-all duration-200"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={handleSearchChange}
                 />
                 {searchQuery && (
                   <button
                     className="absolute inset-y-0 right-0 pr-3 flex items-center 
                              hover:scale-110 transition-transform"
-                    onClick={() => setSearchQuery("")}
+                    onClick={handleClearSearch}
                   >
                     <X className="h-4 w-4 text-base-content/40 hover:text-base-content" />
                   </button>
@@ -709,7 +845,7 @@ export default function Home() {
                 <button
                   className="btn btn-sm btn-error flex items-center gap-2 text-amber-50
                            hover:btn-primary transition-all duration-200 group"
-                  onClick={() => setShowDescription(!showDescription)}
+                  onClick={handleToggleDescriptionFilter}
                 >
                   {showDescription ? (
                     <>
@@ -732,9 +868,7 @@ export default function Home() {
                            hover:from-primary/90 hover:to-secondary/90
                            border-none shadow hover:shadow-md
                            hover:-translate-y-0.5 transition-all duration-200 group"
-                  onClick={() =>
-                    (document.getElementById("social_links_form") as HTMLDialogElement).showModal()
-                  }
+                  onClick={handleOpenModal}
                 >
                   <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
                   <span className="hidden lg:inline text-xs">Nouveau lien</span>
@@ -753,7 +887,10 @@ export default function Home() {
                       <p className="text-white/80 text-xs mt-1">Ajouter vos liens publics</p>
                     </div>
                     <form method="dialog" className="bg-amber-300 rounded-lg">
-                      <button className="btn btn-xs btn-circle btn-ghost text-white bg-danger hover:bg-white/20">
+                      <button 
+                        className="btn btn-xs btn-circle btn-ghost text-white bg-danger hover:bg-white/20"
+                        onClick={handleCloseModal}
+                      >
                         ✕
                       </button>
                     </form>
@@ -769,10 +906,10 @@ export default function Home() {
                       <select
                         className="select select-bordered select-sm w-full focus:ring-1 focus:ring-primary/20"
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
+                        onChange={handleTitleChange}
                       >
                         <optgroup label="Réseaux sociaux">
-                          {socialLinksData.map(({ name }) => (
+                          {socialLinksDataMemo.map(({ name }) => (
                             <option key={name} value={name}>
                               {name}
                             </option>
@@ -794,7 +931,7 @@ export default function Home() {
                         placeholder="Votre pseudo ou nom"
                         className="input input-bordered input-sm w-full focus:ring-1 focus:ring-primary/20"
                         value={socialPseudo}
-                        onChange={(e) => setSocialPseudo(e.target.value)}
+                        onChange={handleSocialPseudoChange}
                       />
                     </div>
                   </div>
@@ -809,7 +946,7 @@ export default function Home() {
                       placeholder="Entrez une description pour votre lien..."
                       className="textarea textarea-bordered textarea-sm w-full h-20 focus:ring-1 focus:ring-primary/20"
                       value={socialDescription || ""}
-                      onChange={(e) => setSocialDescription(e.target.value)}
+                      onChange={handleSocialDescriptionChange}
                     />
                   </div>
 
@@ -907,7 +1044,7 @@ export default function Home() {
                           placeholder="https://..."
                           className="input input-bordered input-sm w-full focus:ring-1 focus:ring-primary/20"
                           value={link || ""}
-                          onChange={(e) => setLink(e.target.value)}
+                          onChange={handleLinkChange}
                         />
                         
                         {/* Prévisualisation pour l'URL */}
@@ -927,11 +1064,7 @@ export default function Home() {
                   <div className="flex gap-3 pt-4">
                     <button
                       className="btn btn-sm btn-ghost flex-1 hover:btn-error transition-all"
-                      onClick={() => {
-                        const modal = document.getElementById("social_links_form") as HTMLDialogElement;
-                        if (modal) modal.close();
-                        resetForm();
-                      }}
+                      onClick={handleCloseModal}
                       disabled={isUploading}
                     >
                       Annuler
@@ -966,43 +1099,8 @@ export default function Home() {
               </div>
             </dialog>
 
-            {loading ? (
-              <div className="my-8 flex justify-center items-center w-full">
-                <div className="flex flex-col items-center gap-2">
-                  <span className="loading loading-spinner loading-md text-primary"></span>
-                  <p className="text-sm text-base-content/70">Chargement...</p>
-                </div>
-              </div>
-            ) : filteredLinks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center w-full py-8 bg-base-100 rounded-xl border border-dashed border-base-300">
-                <EmptyState IconComponent={"Cable"} message={
-                  searchQuery ? 
-                  "Aucun lien ne correspond à votre recherche 😭" : 
-                  "Aucun lien disponible ! 😭"
-                } />
-                {searchQuery && (
-                  <button
-                    className="btn btn-sm btn-outline mt-3 hover:btn-primary transition-all"
-                    onClick={() => setSearchQuery("")}
-                  >
-                    Effacer la recherche
-                  </button>
-                )}
-              </div>
-            ) : (
-             <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
-  {filteredLinks.map(link => (
-    <LinkComponent
-      key={link.id}
-      socialLink={link}
-      onRemove={handleRemoveLink}
-      readonly={false}
-      fetchLinks={handleRefreshLinks}
-      showDescription={showDescription}
-    />
-  ))}
-</div>
-            )}
+            {loading ? renderLoading() : 
+             filteredLinks.length === 0 ? renderEmptyState() : renderLinksList()}
           </div>
         </div>
       </div>
