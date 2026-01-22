@@ -224,6 +224,7 @@ export async function updateUserTheme(email: string, newTheme: string) {
         throw error;
     }
 }
+
 // ========== FONCTIONS POUR GÉRER LES LIKES (VERSION CORRIGÉE) ==========
 
 // Ajouter un like
@@ -365,7 +366,11 @@ export async function getSocialLinksWithLikes(identifier: string, currentUserId?
                 let isLikedByCurrentUser = false;
                 
                 if (currentUserId) {
-                    isLikedByCurrentUser = await hasUserLiked(link.id, currentUserId);
+                    // IMPORTANT: Ne pas montrer que le propriétaire a liké ses propres liens
+                    if (link.userId !== currentUserId) {
+                        isLikedByCurrentUser = await hasUserLiked(link.id, currentUserId);
+                    }
+                    // Si c'est le propriétaire (link.userId === currentUserId), on laisse isLikedByCurrentUser = false
                 }
 
                 return {
@@ -383,9 +388,31 @@ export async function getSocialLinksWithLikes(identifier: string, currentUserId?
     }
 }
 
-// Basculer l'état like/unlike
+// Basculer l'état like/unlike (VERSION CORRIGÉE)
 export async function toggleLike(socialLinkId: string, userId: string) {
     try {
+        // RÉCUPÉRER LE LIEN POUR VÉRIFIER LE PROPRIÉTAIRE
+        const socialLink = await prisma.socialLink.findUnique({
+            where: { id: socialLinkId },
+        });
+
+        if (!socialLink) {
+            return { 
+                success: false, 
+                likesCount: await getLikesCount(socialLinkId),
+                message: "Lien non trouvé" 
+            };
+        }
+
+        // VÉRIFICATION CRITIQUE : Empêcher le propriétaire de liker son propre lien
+        if (socialLink.userId === userId) {
+            return { 
+                success: false, 
+                likesCount: await getLikesCount(socialLinkId),
+                message: "Vous ne pouvez pas liker vos propres liens" 
+            };
+        }
+
         // Vérifier si l'utilisateur a déjà liké
         const hasLiked = await hasUserLiked(socialLinkId, userId);
         

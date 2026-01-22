@@ -4,12 +4,19 @@ import Avatar from "@/app/components/Avatar"
 import EmptyState from "@/app/components/EmptyState"
 import LinkComponent from "@/app/components/LinkComponent"
 import Logo from "@/app/components/Logo"
-import { getSocialLinks, getUserInfo } from "@/app/server"
+import { getSocialLinksWithLikes, getUserInfo } from "@/app/server"
 import { SocialLink } from "@prisma/client"
-import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe } from "lucide-react"
+import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart } from "lucide-react"
 import React, { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import Fuse from "fuse.js"
+import { useUser } from "@clerk/nextjs"
+import { useParams } from "next/navigation"
+
+interface SocialLinkWithLikes extends SocialLink {
+  likesCount?: number;
+  isLikedByCurrentUser?: boolean;
+}
 
 /* ------------------ YOUTUBE UTILS ------------------ */
 const getYoutubeVideoId = (url: string): string | null => {
@@ -52,9 +59,18 @@ const YoutubePreview = ({ url }: { url: string }) => {
   )
 }
 
-/* ------------------ LIEN AVEC DESCRIPTION ------------------ */
-const LinkWithDescription = ({ link }: { link: SocialLink }) => {
+/* ------------------ LIEN AVEC DESCRIPTION ET LIKES ------------------ */
+const LinkWithDescription = ({ 
+  link, 
+  onLikeToggle 
+}: { 
+  link: SocialLinkWithLikes;
+  onLikeToggle?: (linkId: string) => Promise<void>;
+}) => {
   const [showDescription, setShowDescription] = useState(false)
+  const [isLiking, setIsLiking] = useState(false)
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
 
   // Couleur dynamique basée sur l'ID
   const colorIndex = useMemo(() => 
@@ -82,6 +98,25 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
     'border-cyan-200/50 dark:border-cyan-800/20',
   ]
 
+  const handleLike = async () => {
+    if (!onLikeToggle) return;
+    
+    if (isLiking) return;
+    
+    setIsLiking(true);
+    try {
+      await onLikeToggle(link.id);
+      
+      // Mettre à jour l'état local
+      setLocalIsLiked(!localIsLiked);
+      setLocalLikesCount(prev => localIsLiked ? prev - 1 : prev + 1);
+    } catch (error) {
+      console.error('Erreur like:', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Prévisualisation YouTube */}
@@ -91,7 +126,7 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
 
       {/* Carte du lien */}
       <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
-        {/* En-tête avec titre et bouton info */}
+        {/* En-tête avec titre, bouton info et likes */}
         <div className="flex items-center justify-between mb-3 lg:mb-4">
           <div className="flex items-center gap-2 lg:gap-3 min-w-0">
             <div className="flex-shrink-0">
@@ -107,16 +142,32 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
             </div>
           </div>
           
-          {/* Bouton pour afficher/masquer la description */}
-          {link.description && (
+          {/* Section likes et description */}
+          <div className="flex items-center gap-2">
+            {/* Bouton like */}
             <button
-              onClick={() => setShowDescription(!showDescription)}
-              className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors"
-              aria-label="Afficher la description"
+              onClick={handleLike}
+              disabled={isLiking}
+              className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
+              title={localIsLiked ? "Retirer le like" : "Liker ce lien"}
             >
-              <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+              <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+              {localLikesCount > 0 && (
+                <span className="text-xs mt-1">{localLikesCount}</span>
+              )}
             </button>
-          )}
+            
+            {/* Bouton pour afficher/masquer la description */}
+            {link.description && (
+              <button
+                onClick={() => setShowDescription(!showDescription)}
+                className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
+                aria-label="Afficher la description"
+              >
+                <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Description (visible uniquement si cliqué) */}
@@ -140,14 +191,21 @@ const LinkWithDescription = ({ link }: { link: SocialLink }) => {
         </div>
 
         {/* Stats */}
-        {link.clicks > 0 && (
-          <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex justify-between items-center">
+          {link.clicks > 0 && (
             <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
               <Zap className="w-3 h-3" />
               <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
             </div>
-          </div>
-        )}
+          )}
+          
+          {localLikesCount > 0 && (
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
+              <Heart className="w-3 h-3" />
+              <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -179,14 +237,31 @@ const StatsCard = ({ value, label, icon: Icon, color = "primary" }: {
 
 /* ------------------ PAGE ------------------ */
 const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
+  const { user: currentUser, isSignedIn } = useUser()
   const [pseudo, setPseudo] = useState<string | null>()
   const [loading, setLoading] = useState(true)
-  const [links, setLinks] = useState<SocialLink[]>([])
+  const [links, setLinks] = useState<SocialLinkWithLikes[]>([])
   const [theme, setTheme] = useState<string | null>()
   const [search, setSearch] = useState("")
   const [sortBy, setSortBy] = useState<'clicks' | 'title' | 'recent'>('recent')
   const [showOnlyWithDescription, setShowOnlyWithDescription] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all')
+
+  // Calculer les statistiques
+  const totalLikes = useMemo(() => 
+    links.reduce((sum, link) => sum + (link.likesCount || 0), 0),
+    [links]
+  )
+
+  const linksWithDescription = useMemo(() => 
+    links.filter(link => link.description && link.description.trim() !== "").length,
+    [links]
+  )
+
+  const totalClicks = useMemo(() => 
+    links.reduce((sum, link) => sum + link.clicks, 0),
+    [links]
+  )
 
   /* ----------- FETCH DATA ----------- */
   const resolvedParamsAndFetchData = async () => {
@@ -205,7 +280,11 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         userInfo.theme || "retro"
       )
 
-      const fetchedLinks = await getSocialLinks(resolvedParams.pseudo)
+      // UTILISER LA BONNE FONCTION AVEC LIKES
+      const fetchedLinks = await getSocialLinksWithLikes(
+        resolvedParams.pseudo,
+        currentUser?.id // Passer l'ID de l'utilisateur connecté
+      )
       setLinks(fetchedLinks || [])
     } catch {
       toast.error("Cette page n'existe pas !")
@@ -217,7 +296,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
 
   useEffect(() => {
     resolvedParamsAndFetchData()
-  }, [params])
+  }, [params, currentUser?.id]) // Re-fetch quand l'utilisateur se connecte/déconnecte
 
   /* ----------- FUSE (RECHERCHE INTELLIGENTE) ----------- */
   const fuse = useMemo(() => {
@@ -257,32 +336,74 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         break
       case 'recent':
       default:
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         break
     }
     
     return result
   }, [search, fuse, links, showOnlyWithDescription, activeFilter, sortBy])
 
-  // Compter les liens avec description
-  const linksWithDescription = useMemo(() => 
-    links.filter(link => link.description && link.description.trim() !== "").length,
-    [links]
-  )
+  /* ----------- GESTION DES LIKES ----------- */
+  const handleLikeToggle = async (linkId: string) => {
+    if (!isSignedIn || !currentUser) {
+      toast.error("Connectez-vous pour liker");
+      return;
+    }
 
-  // Statistiques
-  const totalClicks = useMemo(() => 
-    links.reduce((sum, link) => sum + link.clicks, 0),
-    [links]
-  )
+    try {
+      const response = await fetch("/api/likes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ linkId }),
+      });
 
-  const activeLinks = useMemo(() => 
-    links.filter(link => link.active).length,
-    [links]
-  )
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erreur lors du like");
+      }
+
+      // Mettre à jour l'état local
+      setLinks(prevLinks =>
+        prevLinks.map(link =>
+          link.id === linkId
+            ? {
+                ...link,
+                likesCount: data.likesCount,
+                isLikedByCurrentUser: data.liked,
+              }
+            : link
+        )
+      );
+
+      toast.success(data.message || (data.liked ? "Lien liké ! ❤️" : "Like retiré"));
+    } catch (error: any) {
+      console.error("Erreur:", error);
+      toast.error(error.message || "Erreur lors du like");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50">
-      <div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
+<div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
+
+  <div className="flex justify-end mb-6 lg:mb-8">
+    {isSignedIn && currentUser && (
+      <div className="flex items-center gap-3 bg-base-100/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-base-300 shadow-sm">
+        <Avatar  pseudo={currentUser.firstName || currentUser.username || "Moi"}  />
+        <div className="text-sm">
+          <div className="font-medium text-primary">{currentUser.firstName || currentUser.username || currentUser.id.slice(0,8)}</div>
+          <div className="text-xs opacity-60">Connecté</div>
+        </div>
+      </div>
+    )}
+  </div>
+
+
+
+
         {/* MODE MOBILE - Layout vertical avec scroll natif */}
         <div className="lg:hidden">
           {/* Header mobile */}
@@ -300,7 +421,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             </div>
           </div>
 
-          {/* Stats mobiles */}
+          {/* Stats mobiles avec LIKES */}
           {links.length > 0 && (
             <div className="grid grid-cols-3 gap-3 mb-6">
               <StatsCard 
@@ -310,17 +431,32 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 color="primary"
               />
               <StatsCard 
-                value={totalClicks} 
-                label="Clics" 
-                icon={Zap} 
+                value={totalLikes} 
+                label="Likes" 
+                icon={Heart} 
                 color="secondary"
               />
               <StatsCard 
-                value={linksWithDescription} 
-                label="Détails" 
-                icon={Info} 
+                value={totalClicks} 
+                label="Clics" 
+                icon={Zap} 
                 color="accent"
               />
+            </div>
+          )}
+
+          {/* Message pour les utilisateurs non connectés */}
+          {!isSignedIn && (
+            <div className="mb-6 p-3 bg-base-100 rounded-xl border border-base-300">
+              <div className="flex items-center justify-between">
+                <div className="text-sm opacity-70">
+                  Connectez-vous pour liker les liens ❤️
+                </div>
+                <a href="/sign-in" className="btn btn-primary btn-xs">
+                  <LogIn className="w-3 h-3" />
+                  Se connecter
+                </a>
+              </div>
             </div>
           )}
 
@@ -373,7 +509,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 </div>
               </div>
               <p className="text-xs opacity-70 mt-1">
-                Cliquez sur l'icône ℹ️ pour voir les détails
+                Touchez <Info className="w-3 h-3 inline" /> pour voir les détails
               </p>
             </div>
           )}
@@ -422,7 +558,11 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 
                 <div className="space-y-4">
                   {processedLinks.map(link => (
-                    <LinkWithDescription key={link.id} link={link} />
+                    <LinkWithDescription 
+                      key={link.id} 
+                      link={link}
+                      onLikeToggle={handleLikeToggle}
+                    />
                   ))}
                 </div>
               </>
@@ -497,7 +637,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   </div>
                 </div>
 
-                {/* Stats */}
+                {/* Stats AVEC LIKES */}
                 {links.length > 0 && (
                   <div className="grid grid-cols-3 gap-3 mt-6">
                     <StatsCard 
@@ -507,15 +647,15 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                       color="primary"
                     />
                     <StatsCard 
-                      value={totalClicks} 
-                      label="Clics" 
-                      icon={Zap} 
+                      value={totalLikes} 
+                      label="Likes" 
+                      icon={Heart} 
                       color="secondary"
                     />
                     <StatsCard 
-                      value={linksWithDescription} 
-                      label="Détails" 
-                      icon={Info} 
+                      value={totalClicks} 
+                      label="Clics" 
+                      icon={Zap} 
                       color="accent"
                     />
                   </div>
@@ -617,6 +757,21 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 </div>
               )}
 
+              {/* Message pour les utilisateurs non connectés */}
+              {!isSignedIn && (
+                <div className="bg-base-100 rounded-2xl p-4 border border-base-300">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm opacity-70">
+                      Connectez-vous pour liker les liens ❤️
+                    </div>
+                    <a href="/sign-in" className="btn btn-primary btn-sm">
+                      <LogIn className="w-3 h-3" />
+                      Se connecter
+                    </a>
+                  </div>
+                </div>
+              )}
+
               {/* Liens */}
               <div className="space-y-5">
                 {loading ? (
@@ -640,7 +795,11 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                     
                     <div className="grid gap-5">
                       {processedLinks.map(link => (
-                        <LinkWithDescription key={link.id} link={link} />
+                        <LinkWithDescription 
+                          key={link.id} 
+                          link={link}
+                          onLikeToggle={handleLikeToggle}
+                        />
                       ))}
                     </div>
                   </>
