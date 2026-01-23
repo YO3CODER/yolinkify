@@ -5,10 +5,10 @@ import Wrapper from "./components/Wrapper";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState, useRef, useCallback, memo, useMemo } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme } from "./server";
+import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme, incrementClickCount } from "./server";
+import { SocialLink } from "@prisma/client";
 import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2 } from "lucide-react";
 import socialLinksData from "./socialLinksData";
-import { SocialLink } from "@prisma/client";
 import EmptyState from "./components/EmptyState";
 import LinkComponent from "./components/LinkComponent";
 import Visualisation from "./components/Visualisation";
@@ -213,7 +213,6 @@ const UrlPreview = memo(({ url }: { url: string }) => {
         />
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
           <div className="flex items-center gap-2 text-white">
-           
             <span className="text-sm font-medium"></span>
           </div>
         </div>
@@ -325,6 +324,8 @@ const ImageCard = memo(({
   const [isLoadingLike, setIsLoadingLike] = useState(false);
   const [likesCount, setLikesCount] = useState(link.likesCount || 0);
   const [isLiked, setIsLiked] = useState(link.isLikedByCurrentUser || false);
+  const [clicks, setClicks] = useState(link.clicks || 0);
+  const [isLoadingClick, setIsLoadingClick] = useState(false);
 
   const handleRemove = async () => {
     setIsRemoving(true);
@@ -355,6 +356,70 @@ const ImageCard = memo(({
     } finally {
       setIsLoadingLike(false);
     }
+  };
+
+  const handleLinkClick = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    if (isLoadingClick) return;
+    
+    setIsLoadingClick(true);
+    
+    try {
+      // 1. Ouvrir le lien immédiatement pour une meilleure UX
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+      
+      // 2. Incrémenter le compteur via l'API server action
+      try {
+        await incrementClickCount(link.id);
+        
+        // Mettre à jour l'état local immédiatement
+        setClicks(prev => prev + 1);
+        
+        // Rafraîchir les données pour synchroniser
+        if (fetchLinks) {
+          await fetchLinks();
+        }
+        
+        console.log('Click incrementé avec succès');
+      } catch (apiError) {
+        console.error('Erreur server action, tentative avec fetch:', apiError);
+        
+        // Fallback: essayer avec fetch si l'action serveur échoue
+        const response = await fetch('/api/clicks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ linkId: link.id }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClicks(data.clicks || clicks + 1);
+          if (fetchLinks) {
+            await fetchLinks();
+          }
+        } else {
+          // Fallback: incrémenter localement
+          setClicks(prev => prev + 1);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      // En cas d'erreur, incrémenter localement quand même
+      setClicks(prev => prev + 1);
+    } finally {
+      setIsLoadingClick(false);
+    }
+  };
+
+  const handleIncrementClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    handleLinkClick(event);
   };
 
   return (
@@ -417,27 +482,25 @@ const ImageCard = memo(({
                     <ImageIcon class="w-12 h-12 text-base-content/30 mx-auto mb-2" />
                     <p class="text-sm text-base-content/70 mb-2">Image non disponible</p>
                   </div>
-                  <a href="${link.url}" target="_blank" rel="noopener noreferrer" 
-                     class="btn btn-xs btn-outline">
-                    Voir le lien
-                  </a>
+                  <button class="btn btn-xs btn-outline">
+                    Visiter le lien
+                  </button>
                 `;
                 parent.appendChild(fallbackDiv);
               }
             }}
           />
-          <a 
-            href={link.url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group"
+          <button
+            className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group cursor-pointer"
+            onClick={handleLinkClick}
             title="Ouvrir l'image en grand"
+            disabled={isLoadingClick}
           >
             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
               <Eye className="w-8 h-8 text-white mb-1" />
               <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">Agrandir</span>
             </div>
-          </a>
+          </button>
         </div>
 
         {/* Footer avec likes et actions - MODIFIÉ pour prendre toute la largeur */}
@@ -462,17 +525,38 @@ const ImageCard = memo(({
 
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="badge badge-info badge-sm">Image</span>
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleIncrementClick}
+              disabled={isLoadingClick}
               className="btn btn-ghost btn-xs gap-1 hover:text-primary"
-              title="Ouvrir dans un nouvel onglet"
+              title="Visiter le lien"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span className="text-xs hidden sm:inline">Ouvrir</span>
-            </a>
+              {isLoadingClick ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="text-xs hidden sm:inline">Ouvrir</span>
+                </>
+              )}
+            </button>
           </div>
+        </div>
+
+        {/* Stats */}
+        <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
+          {clicks > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+              <span>👁️ {clicks} clic{clicks > 1 ? 's' : ''}</span>
+            </div>
+          )}
+          
+          {likesCount > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+              <Heart className="w-3 h-3" />
+              <span>{likesCount} like{likesCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -523,6 +607,7 @@ export default function Home() {
   // Fonction pour rafraîchir les liens
   const fetchLinks = useCallback(async () => {
     try {
+      setLoading(true);
       const userInfo = await getUserInfo(email);
       if (userInfo) {
         setPseudo(userInfo.pseudo);
@@ -530,6 +615,7 @@ export default function Home() {
         setTheme2(userInfo.theme);
       }
 
+      // Forcer le rafraîchissement sans cache
       const fetchedLinks = await getSocialLinksWithLikes(email, currentUserId);
       if (fetchedLinks) {
         setLinks(fetchedLinks);
@@ -538,6 +624,7 @@ export default function Home() {
     } catch (error) {
       console.error("Erreur lors du fetch des liens:", error);
       toast.error("Impossible de récupérer les données");
+      setLoading(false);
     }
   }, [email, currentUserId]);
 
@@ -766,11 +853,6 @@ export default function Home() {
     }
   }, [email, fetchLinks]);
 
-  // Fonction pour rafraîchir les liens
-  const handleRefreshLinks = useCallback(async () => {
-    await fetchLinks();
-  }, [fetchLinks]);
-
   useEffect(() => {
     if (email && isFirstRender.current) {
       fetchLinks();
@@ -903,7 +985,7 @@ export default function Home() {
                     link={link}
                     onRemove={handleRemoveLink}
                     showDescription={showDescription}
-                    fetchLinks={handleRefreshLinks}
+                    fetchLinks={fetchLinks}
                   />
                 </div>
               ))}
@@ -927,7 +1009,7 @@ export default function Home() {
                     socialLink={link}
                     onRemove={handleRemoveLink}
                     readonly={false}
-                    fetchLinks={handleRefreshLinks}
+                    fetchLinks={fetchLinks}
                     showDescription={showDescription}
                   />
                 </div>
@@ -1007,7 +1089,7 @@ export default function Home() {
                 </div>
 
                 {/* Stats des likes améliorées */}
-                <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
+                <div className="bg-linear-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-5 w-full">
                     <Heart className="w-6 h-6 text-primary" />
                     <div className="w-full">
@@ -1349,7 +1431,7 @@ export default function Home() {
                           type="url"
                           placeholder="https://..."
                           className="input input-bordered input-sm w-full focus:ring-1 focus:ring-primary/20"
-                          value={link} // CORRECTION : Toujours une chaîne, jamais undefined
+                          value={link}
                           onChange={handleLinkChange}
                         />
                         

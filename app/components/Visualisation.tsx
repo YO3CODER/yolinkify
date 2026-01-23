@@ -120,7 +120,7 @@ const Visualisation: React.FC<VisualisationProps> = ({
         <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-base-100' : ''}`}>
             <div className={`mockup-browser bg-base-200 border-2 border-base-300 ${isFullscreen ? 'h-screen' : 'hidden md:block'}`}>
                 {/* Toolbar avec contrôles */}
-                <div className="mockup-browser-toolbar bg-gradient-to-r from-base-300 to-base-200">
+                <div className="mockup-browser-toolbar bg-linear-to-r from-base-300 to-base-200">
                     <div className="flex items-center justify-between w-full px-4 py-3">
                        
                         <div className="flex-1 flex justify-center">
@@ -205,7 +205,7 @@ const Visualisation: React.FC<VisualisationProps> = ({
                                                                 className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-105"
                                                                 loading="lazy"
                                                             />
-                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                                                            <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                                                             <div className="absolute inset-0 flex items-center justify-center">
                                                                 <button
                                                                     onClick={() => isVideoActive ? handleVideoPause() : handleVideoPlay(link.id)}

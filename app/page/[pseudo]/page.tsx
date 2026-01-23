@@ -4,7 +4,7 @@ import Avatar from "@/app/components/Avatar"
 import EmptyState from "@/app/components/EmptyState"
 import LinkComponent from "@/app/components/LinkComponent"
 import Logo from "@/app/components/Logo"
-import { getSocialLinksWithLikes, getUserInfo } from "@/app/server"
+import { getSocialLinksWithLikes, getUserInfo, incrementClickCount } from "@/app/server"
 import { SocialLink } from "@prisma/client"
 import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink } from "lucide-react"
 import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react"
@@ -85,12 +85,15 @@ const ImageCard = memo(({
   const [isLiking, setIsLiking] = useState(false)
   const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
   const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
+  const [isLoadingClick, setIsLoadingClick] = useState(false)
+  const [clicks, setClicks] = useState(link.clicks || 0)
 
   // Synchroniser avec les props
   useEffect(() => {
     setLocalIsLiked(link.isLikedByCurrentUser || false)
     setLocalLikesCount(link.likesCount || 0)
-  }, [link.isLikedByCurrentUser, link.likesCount])
+    setClicks(link.clicks || 0)
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
 
   const handleLike = useCallback(async () => {
     if (!onLikeToggle || isLiking) return;
@@ -116,6 +119,56 @@ const ImageCard = memo(({
   const handleToggleDescription = useCallback(() => {
     setShowDescription(prev => !prev)
   }, [])
+
+  const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (isLoadingClick) return;
+    
+    setIsLoadingClick(true);
+    
+    try {
+      // 1. Ouvrir le lien immédiatement pour une meilleure UX
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+      
+      // 2. Incrémenter le compteur via l'API server action
+      try {
+        await incrementClickCount(link.id);
+        
+        // Mettre à jour l'état local immédiatement
+        setClicks(prev => prev + 1);
+        
+        console.log('Click incrementé avec succès');
+      } catch (apiError) {
+        console.error('Erreur server action, tentative avec fetch:', apiError);
+        
+        // Fallback: essayer avec fetch si l'action serveur échoue
+        const response = await fetch('/api/clicks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ linkId: link.id }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClicks(data.clicks || clicks + 1);
+        } else {
+          // Fallback: incrémenter localement
+          setClicks(prev => prev + 1);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      // En cas d'erreur, incrémenter localement quand même
+      setClicks(prev => prev + 1);
+    } finally {
+      setIsLoadingClick(false);
+    }
+  }, [link.id, link.url, isLoadingClick, clicks])
 
   return (
     <div className="bg-gradient-to-br from-base-100 to-base-200/50 p-4 lg:p-5 rounded-xl border border-base-300 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
@@ -210,6 +263,11 @@ const ImageCard = memo(({
           rel="noopener noreferrer"
           className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group"
           title="Ouvrir l'image en grand"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleIncrementClick(e as any);
+          }}
         >
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
             <Eye className="w-8 h-8 text-white mb-1" />
@@ -240,25 +298,30 @@ const ImageCard = memo(({
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="badge badge-info badge-sm">Image</span>
-          <a
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={handleIncrementClick}
+            disabled={isLoadingClick}
             className="btn btn-ghost btn-xs gap-1 hover:text-primary"
-            title="Ouvrir dans un nouvel onglet"
+            title="Visiter le lien"
           >
-            <ExternalLink className="w-4 h-4" />
-            <span className="text-xs hidden sm:inline">Ouvrir</span>
-          </a>
+            {isLoadingClick ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <>
+                <ExternalLink className="w-4 h-4" />
+                <span className="text-xs hidden sm:inline">Ouvrir</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
       {/* Stats */}
       <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
-        {link.clicks > 0 && (
+        {clicks > 0 && (
           <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
             <Zap className="w-3 h-3" />
-            <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
+            <span>{clicks} clic{clicks > 1 ? 's' : ''}</span>
           </div>
         )}
         
@@ -318,12 +381,6 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
         loading="lazy"
         referrerPolicy="strict-origin-when-cross-origin"
       />
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
-        <div className="flex items-center gap-2 text-white">
-         
-          <span className="text-sm font-medium"></span>
-        </div>
-      </div>
     </div>
   )
 })
@@ -342,12 +399,14 @@ const LinkWithDescription = memo(({
   const [isLiking, setIsLiking] = useState(false)
   const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
   const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
+  const [clicks, setClicks] = useState(link.clicks || 0)
 
   // Synchroniser avec les props
   useEffect(() => {
     setLocalIsLiked(link.isLikedByCurrentUser || false)
     setLocalLikesCount(link.likesCount || 0)
-  }, [link.isLikedByCurrentUser, link.likesCount])
+    setClicks(link.clicks || 0)
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
 
   // Couleur dynamique basée sur l'ID - mémoïsée
   const colorIndex = useMemo(() => 
@@ -491,10 +550,10 @@ const LinkWithDescription = memo(({
 
           {/* Stats */}
           <div className="mt-3 flex justify-between items-center">
-            {link.clicks > 0 && (
+            {clicks > 0 && (
               <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
                 <Zap className="w-3 h-3" />
-                <span>{link.clicks} clic{link.clicks > 1 ? 's' : ''}</span>
+                <span>{clicks} clic{clicks > 1 ? 's' : ''}</span>
               </div>
             )}
             
@@ -1242,18 +1301,6 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             {loading ? renderLoading() : 
              processedLinks.length > 0 ? (
               <>
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold">
-                    Liens disponibles 
-                    <span className="ml-2 badge badge-primary badge-sm">
-                      {processedLinks.length}
-                    </span>
-                  </h2>
-                  <div className="text-xs opacity-70">
-                    {debouncedSearch && `Résultats pour : "${debouncedSearch}"`}
-                  </div>
-                </div>
-                
                 {renderLinksList()}
               </>
             ) : renderEmptyState()}

@@ -473,12 +473,49 @@ const LinkComponent: FC<LinkComponentProps> = ({
 
   const handleIncrementClick = useCallback(async () => {
     try {
-      await incrementClickCount(socialLink.id)
-      setClicks(prev => prev + 1)
+      // Ouvrir le lien immédiatement pour une meilleure UX
+      window.open(socialLink.url, '_blank', 'noopener,noreferrer');
+      
+      // Ensuite incrémenter le compteur via l'API server action
+      await incrementClickCount(socialLink.id);
+      
+      // Mettre à jour l'état local immédiatement
+      setClicks(prev => prev + 1);
+      
+      // Rafraîchir les données pour synchroniser avec la base
+      if (fetchLinks) {
+        await fetchLinks();
+      }
     } catch (error){
-      console.error(error)
+      console.error('Erreur API, tentative avec fetch:', error);
+      
+      // Fallback: essayer avec fetch si l'action serveur échoue
+      try {
+        const response = await fetch('/api/clicks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ linkId: socialLink.id }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClicks(data.clicks || clicks + 1);
+          if (fetchLinks) {
+            await fetchLinks();
+          }
+        } else {
+          // Fallback: incrémenter localement
+          setClicks(prev => prev + 1);
+        }
+      } catch (fetchError) {
+        console.error('Erreur fetch:', fetchError);
+        // En cas d'erreur, incrémenter localement
+        setClicks(prev => prev + 1);
+      }
     }
-  }, [socialLink.id])
+  }, [socialLink.id, socialLink.url, fetchLinks, clicks])
 
   const handleUpdatedLink = useCallback(async () => {
     // Si on utilise l'upload de fichier, l'URL n'est pas requise
@@ -721,7 +758,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
           <span className="flex items-center justify-center gap-2">
             {isUploadedFile 
               ? (isPDFFile(socialLink.url) ? 'Télécharger le PDF' : 'Voir l\'image') 
-              : 'Visiter le lien'}
+              : 'Visiter le lien '}
             <ExternalLink className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
           </span>
         </Link>
