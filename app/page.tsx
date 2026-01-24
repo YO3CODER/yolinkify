@@ -547,7 +547,7 @@ const ImageCard = memo(({
         <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
           {clicks > 0 && (
             <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
-              <span>👁️ {clicks} clics{clicks > 1 ? 's' : ''}</span>
+              <span>👁️ {clicks} clic{clicks > 1 ? 's' : ''}</span>
             </div>
           )}
           
