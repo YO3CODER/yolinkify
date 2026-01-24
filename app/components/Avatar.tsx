@@ -54,7 +54,7 @@ const Avatar: React.FC<AvatarProps> = ({ pseudo }) => {
         key={`pseudo-${safePseudo}`} 
         className="font-semibold text-center text-base"
       >
-        <span className="text-neutral-content">@{safePseudo}</span>
+        <span className="text-primary">@{safePseudo}</span>
         <span className="text-orange-500 font-bold ml-1">🔥</span>
       </p>
     </div>
