@@ -1,6 +1,6 @@
 // Fichier JSON des liens sociaux corrigé
 
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Brain } from "lucide-react";
 
 const socialLinksData = [
   { name: "YouTube", root: "https://www.youtube.com/", altRoot: "https://youtu.be/" },
@@ -29,9 +29,30 @@ const socialLinksData = [
   { name: "CodePen", root: "https://codepen.io/", altRoot: "" },
 
   // 🔥 Plateformes éducatives
-  { name: "OpenClassrooms", root: "https://openclassrooms.com/", altRoot: "https://www.openclassrooms.com/"},
-  { name: "Schoolavox", root: "https://schoolavox.com/", altRoot: "https://www.schoolavox.com/" },
-  { name: "Udemy", root: "https://www.udemy.com/", altRoot: "" },
+  {
+    name: "OpenClassrooms",
+    root: "https://openclassrooms.com/",
+    altRoot: "https://www.openclassrooms.com/",
+    icon: GraduationCap
+  },
+  {
+    name: "Schoolavox",
+    root: "https://schoolavox.com/",
+    altRoot: "https://www.schoolavox.com/",
+    icon: GraduationCap
+  },
+  {
+    name: "Udemy",
+    root: "https://www.udemy.com/",
+    altRoot: "",
+    icon: GraduationCap
+  },
+  {
+    name: "Khan Academy",
+    root: "https://www.khanacademy.org/",
+    altRoot: "",
+    
+  },
 
   { name: "PDF", root: "", altRoot: "", fileType: "pdf" },
   { name: "Image", root: "", altRoot: "", fileType: "image" },

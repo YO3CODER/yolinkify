@@ -1138,6 +1138,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
               <Download className="w-3 h-3" />
             ) : (
               <ExternalLink className="w-3 h-3" />
+              
             )}
           </Link>
         </div>
@@ -1147,10 +1148,10 @@ const LinkComponent: FC<LinkComponentProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 border-t border-base-300 gap-4 sm:gap-0">
         <div className="flex items-center gap-4">
           {/* Bouton like */}
-          <div className="tooltip" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "Retirer le like" : "Ajouter un like"}>
+          <div className="tooltip bg-purple-50" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "🔥" : ""}>
             <button
               className="btn btn-ghost btn-sm gap-2"
-              onClick={handleToggleLike}
+              
               disabled={isLiking || !currentUserId}
             >
               {isLiking ? (

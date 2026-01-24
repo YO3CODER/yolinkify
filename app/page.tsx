@@ -341,7 +341,6 @@ const ImageCard = memo(({
     
     setIsLoadingLike(true);
     try {
-      // Pour éviter l'erreur, on simule le like localement
       const newIsLiked = !isLiked;
       setIsLiked(newIsLiked);
       setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
@@ -349,7 +348,6 @@ const ImageCard = memo(({
       toast.success(newIsLiked ? "Like ajouté!" : "Like retiré!");
     } catch (error) {
       console.error(error);
-      // Annuler les changements en cas d'erreur
       setIsLiked(!isLiked);
       setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
       toast.error("Erreur lors du traitement du like");
@@ -369,26 +367,18 @@ const ImageCard = memo(({
     setIsLoadingClick(true);
     
     try {
-      // 1. Ouvrir le lien immédiatement pour une meilleure UX
       window.open(link.url, '_blank', 'noopener,noreferrer');
       
-      // 2. Incrémenter le compteur via l'API server action
       try {
         await incrementClickCount(link.id);
-        
-        // Mettre à jour l'état local immédiatement
         setClicks(prev => prev + 1);
         
-        // Rafraîchir les données pour synchroniser
         if (fetchLinks) {
           await fetchLinks();
         }
-        
-        console.log('Click incrementé avec succès');
       } catch (apiError) {
         console.error('Erreur server action, tentative avec fetch:', apiError);
         
-        // Fallback: essayer avec fetch si l'action serveur échoue
         const response = await fetch('/api/clicks', {
           method: 'POST',
           headers: {
@@ -404,14 +394,12 @@ const ImageCard = memo(({
             await fetchLinks();
           }
         } else {
-          // Fallback: incrémenter localement
           setClicks(prev => prev + 1);
         }
       }
       
     } catch (error) {
       console.error('Erreur:', error);
-      // En cas d'erreur, incrémenter localement quand même
       setClicks(prev => prev + 1);
     } finally {
       setIsLoadingClick(false);
@@ -425,7 +413,6 @@ const ImageCard = memo(({
   return (
     <div className="card bg-base-100 border border-base-300 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:border-primary/50 w-full">
       <div className="p-4">
-        {/* En-tête - MODIFIÉ pour prendre toute la largeur */}
         <div className="flex justify-between items-start mb-3 w-full">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -463,7 +450,6 @@ const ImageCard = memo(({
           </div>
         </div>
 
-        {/* Image */}
         <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
           <img 
             src={link.url} 
@@ -503,14 +489,11 @@ const ImageCard = memo(({
           </button>
         </div>
 
-        {/* Footer avec likes et actions - MODIFIÉ pour prendre toute la largeur */}
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
             <button
-              onClick={handleLike}
-              disabled={isLoadingLike}
-              className={`btn btn-xs gap-2 ${isLiked ? 'btn-error' : 'btn-ghost hover:btn-error'}`}
-              title={isLiked ? "Retirer le like" : "Ajouter un like"}
+             
+              className={`btn btn-xs gap-2 ${isLiked ? 'btn-error text-white' : 'btn-ghost hover:btn-error'}`}
             >
               {isLoadingLike ? (
                 <span className="loading loading-spinner loading-xs"></span>
@@ -543,7 +526,6 @@ const ImageCard = memo(({
           </div>
         </div>
 
-        {/* Stats */}
         <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
           {clicks > 0 && (
             <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
@@ -573,7 +555,7 @@ export default function Home() {
   const [pseudo, setPseudo] = useState<string | null | undefined>(null);
   const [theme, setTheme] = useState<string | null | undefined>(null);
   const [theme2, setTheme2] = useState<string | null | undefined>(null);
-  const [link, setLink] = useState<string>(""); // Toujours initialisé avec une chaîne vide
+  const [link, setLink] = useState<string>("");
   const [socialPseudo, setSocialPseudo] = useState<string>("");
   const [socialDescription, setSocialDescription] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
@@ -582,18 +564,15 @@ export default function Home() {
   const [showDescription, setShowDescription] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   
-  // États pour l'upload de fichier
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [useFileUpload, setUseFileUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Debounce pour la recherche
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const isFirstRender = useRef(true);
 
-  // Thèmes memoïsés
   const themes = useMemo(() => [
     "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro",
     "cyberpunk", "caramellatte", "halloween", "garden", "forest", "aqua", "lofi", "pastel",
@@ -601,10 +580,8 @@ export default function Home() {
     "acid", "lemonade", "coffee", "winter", "dim", "nord", "sunset", "valentine", "abyss", "silk"
   ], []);
 
-  // Données des liens sociaux memoïsées
   const socialLinksDataMemo = useMemo(() => socialLinksData, []);
 
-  // Fonction pour rafraîchir les liens
   const fetchLinks = useCallback(async () => {
     try {
       setLoading(true);
@@ -615,7 +592,6 @@ export default function Home() {
         setTheme2(userInfo.theme);
       }
 
-      // Forcer le rafraîchissement sans cache
       const fetchedLinks = await getSocialLinksWithLikes(email, currentUserId);
       if (fetchedLinks) {
         setLinks(fetchedLinks);
@@ -628,7 +604,6 @@ export default function Home() {
     }
   }, [email, currentUserId]);
 
-  // Filtrer les liens en fonction de la recherche
   const filteredLinks = useMemo(() => {
     if (debouncedSearchQuery.trim() === "") {
       return links;
@@ -648,21 +623,18 @@ export default function Home() {
     });
   }, [debouncedSearchQuery, links]);
 
-  // Réinitialiser les états du fichier quand on change de type
   useEffect(() => {
     if (title !== "Image" && title !== "Document PDF") {
       setSelectedFile(null);
       setUseFileUpload(false);
-      setLink(""); // Toujours une chaîne vide, jamais undefined
+      setLink("");
     }
   }, [title]);
 
-  // Gérer la sélection de fichier
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Vérifier le type de fichier selon le titre sélectionné
     if (title === "Image" && !isImageFile(file)) {
       toast.error("Veuillez sélectionner une image (JPEG, PNG, GIF, etc.)");
       return;
@@ -673,7 +645,6 @@ export default function Home() {
       return;
     }
 
-    // Limite de taille (10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast.error("Le fichier est trop volumineux (max 10MB)");
       return;
@@ -681,11 +652,9 @@ export default function Home() {
 
     setSelectedFile(file);
     setUseFileUpload(true);
-    // Réinitialiser le champ URL quand on sélectionne un fichier
     setLink("");
   }, [title]);
 
-  // Upload du fichier
   const handleFileUpload = useCallback(async () => {
     if (!selectedFile) return;
 
@@ -700,7 +669,6 @@ export default function Home() {
       formData.append('pseudo', socialPseudo);
       formData.append('description', socialDescription);
 
-      // Simuler la progression
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
@@ -724,25 +692,19 @@ export default function Home() {
       }
 
       const data = await response.json();
-      
-      // Utiliser l'URL retournée par l'API
       const fileUrl = data.url;
       
-      // Ajouter le lien avec l'URL du fichier uploadé
       const newLink = await addSocialLink(email, title, fileUrl, socialPseudo, socialDescription);
       const modal = document.getElementById("social_links_form") as HTMLDialogElement;
       if (modal) modal.close();
 
       if (newLink) {
-        // Rafraîchir les liens après l'ajout
         await fetchLinks();
       }
 
-      // Réinitialiser tout
       resetForm();
       toast.success(`${title} ajouté avec succès 🥳`);
       
-      // Réinitialiser la progression après 1 seconde
       setTimeout(() => setUploadProgress(0), 1000);
 
     } catch (error) {
@@ -753,9 +715,8 @@ export default function Home() {
     }
   }, [selectedFile, email, title, socialPseudo, socialDescription, fetchLinks]);
 
-  // Réinitialiser le formulaire
   const resetForm = useCallback(() => {
-    setLink(""); // Toujours une chaîne vide
+    setLink("");
     setSocialPseudo("");
     setSocialDescription("");
     setTitle(socialLinksDataMemo[0].name);
@@ -767,13 +728,11 @@ export default function Home() {
   }, [socialLinksDataMemo]);
 
   const handleAddLink = useCallback(async () => {
-    // Validation pour l'upload de fichier
     if (useFileUpload && selectedFile) {
       await handleFileUpload();
       return;
     }
 
-    // Validation pour les URLs normales
     if (!link || link.trim() === "") {
       toast.error(`Veuillez ${title === "Image" ? "sélectionner une image" : title === "Document PDF" ? "sélectionner un PDF" : "entrer une URL"}`);
       return;
@@ -789,7 +748,6 @@ export default function Home() {
       return;
     }
 
-    // Validation spécifique pour les réseaux sociaux
     if (title !== "Image" && title !== "Document PDF") {
       const selectedTitle = socialLinksDataMemo.find(l => l.name === title);
       if (selectedTitle?.root && selectedTitle.altRoot) {
@@ -813,7 +771,6 @@ export default function Home() {
       if (modal) modal.close();
 
       if (newLink) {
-        // Rafraîchir les liens après l'ajout
         await fetchLinks();
       }
 
@@ -825,7 +782,6 @@ export default function Home() {
     }
   }, [useFileUpload, selectedFile, handleFileUpload, link, title, socialPseudo, socialLinksDataMemo, email, fetchLinks, resetForm]);
 
-  // Fonction pour uploader le fichier et retourner l'URL
   const uploadFile = useCallback(async (): Promise<string> => {
     if (!selectedFile) throw new Error("Aucun fichier sélectionné");
 
@@ -845,7 +801,6 @@ export default function Home() {
   const handleRemoveLink = useCallback(async (linkId: string) => {
     try {
       await removeSocialLink(email, linkId);
-      // Rafraîchir les liens après la suppression
       await fetchLinks();
     } catch (error) {
       console.error(error);
@@ -883,21 +838,18 @@ export default function Home() {
     }
   }, [theme, email]);
 
-  // Calculer le total des likes avec useMemo
   const totalLikes = useMemo(() => 
     links.reduce((total, link) => total + (link.likesCount || 0), 0),
     [links]
   );
 
-  // Calculer les liens avec description
   const linksWithDescriptionCount = useMemo(() => 
     links.filter(l => l.description && l.description.trim() !== "").length,
     [links]
   );
 
-  // Handlers memoïsés
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSearchQuery(e.target.value || "");
   }, []);
 
   const handleClearSearch = useCallback(() => {
@@ -913,15 +865,15 @@ export default function Home() {
   }, []);
 
   const handleSocialPseudoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSocialPseudo(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSocialPseudo(e.target.value || "");
   }, []);
 
   const handleSocialDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setSocialDescription(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSocialDescription(e.target.value || "");
   }, []);
 
   const handleLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLink(e.target.value || ""); // CORRECTION ICI : Toujours une chaîne vide si undefined
+    setLink(e.target.value || "");
   }, []);
 
   const handleCloseModal = useCallback(() => {
@@ -935,7 +887,6 @@ export default function Home() {
     if (modal) modal.showModal();
   }, []);
 
-  // Composants de rendu conditionnel
   const renderLoading = () => (
     <div className="my-8 flex justify-center items-center w-full">
       <div className="flex flex-col items-center gap-2">
@@ -963,15 +914,12 @@ export default function Home() {
     </div>
   );
 
-  // Fonction pour afficher les liens
   const renderLinksList = () => {
-    // Séparer les images des autres liens
     const imageLinks = filteredLinks.filter(link => isImageUrl(link.url));
     const otherLinks = filteredLinks.filter(link => !isImageUrl(link.url));
 
     return (
       <div className="space-y-6 w-full">
-        {/* Section des images */}
         {imageLinks.length > 0 && (
           <div className="space-y-4 w-full">
             <div className="flex items-center gap-2">
@@ -993,7 +941,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Section des autres liens */}
         {otherLinks.length > 0 && (
           <div className="space-y-4 w-full">
             {(imageLinks.length > 0 || otherLinks.length > 0) && (
@@ -1026,12 +973,10 @@ export default function Home() {
       <Toaster position="top-right" reverseOrder={false} />
 
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-5rem)] w-full">
-        {/* Colonne gauche - Agrandie (35%) avec scroll indépendant */}
         <div className="lg:w-2/5 lg:h-full lg:overflow-y-auto lg:pr-3 w-full">
           <div className="space-y-6 lg:pb-8 w-full">
             {pseudo && theme && (
               <div className="space-y-6 w-full">
-                {/* En-tête dans la sidebar */}
                 <div className="bg-gradient-to-br from-primary/10 via-base-200 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex flex-col items-center space-y-4 w-full">
                     <div className="flex items-center gap-2 mb-2 w-full">
@@ -1046,7 +991,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Sélecteur de thème amélioré */}
                 <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-4 w-full">
                     <Palette className="w-5 h-5 text-primary" />
@@ -1088,7 +1032,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Stats des likes améliorées */}
                 <div className="bg-linear-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-5 w-full">
                     <Heart className="w-6 h-6 text-primary" />
@@ -1144,7 +1087,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Visualisation améliorée */}
                 <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-4 w-full">
                     <Sparkles className="w-5 h-5 text-primary" />
@@ -1178,7 +1120,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Bouton de copie dans la sidebar */}
                 <div className="bg-gradient-to-br from-base-100 to-base-200 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex flex-col items-center space-y-3 w-full">
                     <h3 className="font-bold text-lg">Partagez votre page</h3>
@@ -1200,10 +1141,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Colonne droite - Réduite (65%) avec scroll indépendant */}
         <div className="lg:w-3/5 lg:h-full lg:overflow-y-auto lg:pl-3 w-full">
           <div className="space-y-6 lg:pb-8 w-full">
-            {/* Barre de recherche et boutons optimisés */}
             <div className="flex flex-col lg:flex-row gap-3 w-full">
               <div className="relative flex-grow w-full">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1265,7 +1204,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Modal optimisé avec scroll fixé */}
             <dialog id="social_links_form" className="modal modal-middle">
               <div className="modal-box max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col w-full">
                 <div className="bg-amber-400 p-4 shrink-0 w-full">
@@ -1324,7 +1262,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Champ Description */}
                   <div className="form-control w-full">
                     <label className="label py-1">
                       <span className="label-text font-semibold">Description</span>
@@ -1338,7 +1275,6 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Section Upload ou URL */}
                   <div className="space-y-3 w-full">
                     <label className="label py-1 w-full">
                       <span className="label-text font-semibold">
@@ -1346,10 +1282,8 @@ export default function Home() {
                       </span>
                     </label>
 
-                    {/* Mode fichier pour Image/PDF */}
                     {(title === "Image" || title === "Document PDF") ? (
                       <div className="space-y-3 w-full">
-                        {/* Input fichier */}
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1359,7 +1293,6 @@ export default function Home() {
                           disabled={isUploading}
                         />
 
-                        {/* Aperçu du fichier sélectionné */}
                         {selectedFile && (
                           <div className="space-y-3 w-full">
                             <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
@@ -1395,7 +1328,6 @@ export default function Home() {
                                 </button>
                               </div>
 
-                              {/* Prévisualisation */}
                               <div className="mt-3 w-full">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="text-sm font-medium">Prévisualisation :</span>
@@ -1407,7 +1339,6 @@ export default function Home() {
                               </div>
                             </div>
 
-                            {/* Barre de progression */}
                             {isUploading && (
                               <div className="mt-3 w-full">
                                 <div className="flex justify-between text-xs mb-1">
@@ -1425,7 +1356,6 @@ export default function Home() {
                         )}
                       </div>
                     ) : (
-                      /* Mode URL pour réseaux sociaux */
                       <div className="space-y-3 w-full">
                         <input
                           type="url"
@@ -1435,7 +1365,6 @@ export default function Home() {
                           onChange={handleLinkChange}
                         />
                         
-                        {/* Prévisualisation pour l'URL */}
                         {link && link.trim() !== "" && (
                           <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
                             <div className="flex items-center gap-2 mb-2">
@@ -1449,7 +1378,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Boutons fixes en bas */}
                 <div className="p-4 border-t border-base-300 shrink-0 w-full">
                   <div className="flex gap-3 w-full">
                     <button
@@ -1488,7 +1416,6 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* Backdrop pour fermer le modal */}
               <form method="dialog" className="modal-backdrop">
                 <button onClick={handleCloseModal}>close</button>
               </form>
