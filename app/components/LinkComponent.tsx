@@ -1128,13 +1128,13 @@ const LinkComponent: FC<LinkComponentProps> = ({
                 handleIncrementClick();
               }
             }}
-            className="btn btn-primary btn-sm mt-2 gap-2 w-full"
+            className="btn btn-accent btn-sm mt-2 gap-2 w-full text-amber-100"
             disabled={!isActive}
           >
             <ExternalLink className="w-4 h-4" />
             {isUploadedFile 
               ? (fileType === 'pdf' ? 'Télécharger le PDF' : 'Voir l\'image') 
-              : 'Visiter le lien'}
+              : 'Visiter le lien🔥'}
           </button>
         )}
       </div>
