@@ -1128,7 +1128,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
                 handleIncrementClick();
               }
             }}
-            className="btn btn-accent btn-sm mt-2 gap-2 w-full text-amber-100"
+            className="btn btn-info btn-sm mt-2 gap-2 w-full text-amber-100"
             disabled={!isActive}
           >
             <ExternalLink className="w-4 h-4" />
