@@ -1119,29 +1119,24 @@ const LinkComponent: FC<LinkComponentProps> = ({
           </div>
         )}
 
-        <div className="tooltip" data-tip={formData.url}>
-          <Link
-            href={formData.url}
-            target={isUploadedFile ? "_blank" : "_blank"}
-            rel="noopener noreferrer"
-            className="link link-hover text-sm opacity-90 flex items-center gap-1 mt-2"
-            onClick={isActive ? handleIncrementClick : undefined}
+        {/* Bouton "Visiter le lien" */}
+        {isActive && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              if (isActive) {
+                handleIncrementClick();
+              }
+            }}
+            className="btn btn-primary btn-sm mt-2 gap-2 w-full"
+            disabled={!isActive}
           >
-            <span className="truncate">
-              {isUploadedFile 
-                ? (fileType === 'pdf'
-                    ? '📄 Voir le document PDF' 
-                    : '🖼️ Voir l\'image') 
-                : truncateLink(formData.url, 30)}
-            </span>
-            {isUploadedFile && fileType === 'pdf' ? (
-              <Download className="w-3 h-3" />
-            ) : (
-              <ExternalLink className="w-3 h-3" />
-              
-            )}
-          </Link>
-        </div>
+            <ExternalLink className="w-4 h-4" />
+            {isUploadedFile 
+              ? (fileType === 'pdf' ? 'Télécharger le PDF' : 'Voir l\'image') 
+              : 'Visiter le lien'}
+          </button>
+        )}
       </div>
 
       {/* Footer avec stats, likes et actions */}
@@ -1152,7 +1147,6 @@ const LinkComponent: FC<LinkComponentProps> = ({
             <button
               className="btn btn-ghost btn-sm gap-2"
               
-              disabled={isLiking || !currentUserId}
             >
               {isLiking ? (
                 <span className="loading loading-spinner loading-xs" />
