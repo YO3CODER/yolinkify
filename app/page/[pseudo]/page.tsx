@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import Avatar from "@/app/components/Avatar"
-import EmptyState from "@/app/components/EmptyState"
-import LinkComponent from "@/app/components/LinkComponent"
-import Logo from "@/app/components/Logo"
-import { getSocialLinksWithLikes, getUserInfo, incrementClickCount } from "@/app/server"
-import { SocialLink } from "@prisma/client"
-import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink } from "lucide-react"
-import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react"
-import toast from "react-hot-toast"
-import Fuse from "fuse.js"
-import { useUser } from "@clerk/nextjs"
-import { useParams } from "next/navigation"
+import Avatar from "@/app/components/Avatar";
+import EmptyState from "@/app/components/EmptyState";
+import LinkComponent from "@/app/components/LinkComponent";
+import Logo from "@/app/components/Logo";
+import { getSocialLinksWithLikes, getUserInfo, incrementClickCount } from "@/app/server";
+import { SocialLink } from "@prisma/client";
+import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink, Check, Video, Play } from "lucide-react";
+import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react";
+import toast from "react-hot-toast";
+import Fuse from "fuse.js";
+import { useUser } from "@clerk/nextjs";
+import { useParams } from "next/navigation";
 
 interface SocialLinkWithLikes extends SocialLink {
   likesCount?: number;
@@ -29,6 +29,23 @@ const isImageUrl = (url: string): boolean => {
 const isPdfUrl = (url: string): boolean => {
   if (!url) return false;
   return /\.pdf$/i.test(url);
+};
+
+// Fonction pour détecter si une URL est une vidéo
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  // URLs Cloudinary vidéo
+  if (url.includes('cloudinary.com') && (url.includes('/video/') || url.includes('.mp4') || url.includes('.webm'))) {
+    return true;
+  }
+  // URLs directes de vidéos
+  return /\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv|m4v|mpg|mpeg)$/i.test(url);
+};
+
+// Fonction pour vérifier si c'est une URL Cloudinary
+const isCloudinaryVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.includes('cloudinary.com') && (url.includes('/video/') || url.includes('resource_type=video'));
 };
 
 // Fonction pour extraire l'ID YouTube
@@ -72,6 +89,283 @@ const isYouTubeUrl = (url: string): boolean => {
   if (!url) return false;
   return url.includes('youtube.com') || url.includes('youtu.be');
 };
+
+/* ------------------ VIDEO CARD COMPONENT ------------------ */
+const VideoCard = memo(({ 
+  link, 
+  onLikeToggle 
+}: { 
+  link: SocialLinkWithLikes;
+  onLikeToggle?: (linkId: string) => Promise<void>;
+}) => {
+  const [showDescription, setShowDescription] = useState(false)
+  const [isLiking, setIsLiking] = useState(false)
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
+  const [isLoadingClick, setIsLoadingClick] = useState(false)
+  const [clicks, setClicks] = useState(link.clicks || 0)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  // Synchroniser avec les props
+  useEffect(() => {
+    setLocalIsLiked(link.isLikedByCurrentUser || false)
+    setLocalLikesCount(link.likesCount || 0)
+    setClicks(link.clicks || 0)
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
+
+  const handleLike = useCallback(async () => {
+    if (!onLikeToggle || isLiking) return;
+    
+    setIsLiking(true);
+    try {
+      const wasLiked = localIsLiked;
+      const newLikesCount = wasLiked ? localLikesCount - 1 : localLikesCount + 1;
+      
+      setLocalIsLiked(!wasLiked);
+      setLocalLikesCount(newLikesCount);
+      
+      await onLikeToggle(link.id);
+    } catch (error) {
+      console.error('Erreur like:', error);
+      setLocalIsLiked(link.isLikedByCurrentUser || false);
+      setLocalLikesCount(link.likesCount || 0);
+    } finally {
+      setIsLiking(false);
+    }
+  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount])
+
+  const handleToggleDescription = useCallback(() => {
+    setShowDescription(prev => !prev)
+  }, [])
+
+  const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (isLoadingClick) return;
+    
+    setIsLoadingClick(true);
+    
+    try {
+      // 1. Ouvrir le lien immédiatement pour une meilleure UX
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+      
+      // 2. Incrémenter le compteur via l'API server action
+      try {
+        await incrementClickCount(link.id);
+        
+        // Mettre à jour l'état local immédiatement
+        setClicks(prev => prev + 1);
+        
+        console.log('Click incrementé avec succès');
+      } catch (apiError) {
+        console.error('Erreur server action, tentative avec fetch:', apiError);
+        
+        // Fallback: essayer avec fetch si l'action serveur échoue
+        const response = await fetch('/api/clicks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ linkId: link.id }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClicks(data.clicks || clicks + 1);
+        } else {
+          // Fallback: incrémenter localement
+          setClicks(prev => prev + 1);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      // En cas d'erreur, incrémenter localement quand même
+      setClicks(prev => prev + 1);
+    } finally {
+      setIsLoadingClick(false);
+    }
+  }, [link.id, link.url, isLoadingClick, clicks])
+
+  return (
+    <div className="bg-gradient-to-br from-base-100 to-base-200/50 p-4 lg:p-5 rounded-xl border border-base-300 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
+      {/* En-tête avec titre et boutons */}
+      <div className="flex items-center justify-between mb-3 lg:mb-4">
+        <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+          <div className="flex-shrink-0">
+            <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <Video className="w-4 h-4 lg:w-5 lg:h-5 text-green-500" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
+            {link.pseudo && (
+              <span className="text-xs opacity-60 truncate block">
+                @{link.pseudo}
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {/* Section likes et description */}
+        <div className="flex items-center gap-2">
+          {/* Bouton like */}
+          <button
+            onClick={handleLike}
+            disabled={isLiking}
+            className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
+            title={localIsLiked ? "Retirer le like" : "Liker cette vidéo"}
+          >
+            <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+            {localLikesCount > 0 && (
+              <span className="text-xs mt-1">{localLikesCount}</span>
+            )}
+          </button>
+          
+          {/* Bouton pour afficher/masquer la description */}
+          {link.description && (
+            <button
+              onClick={handleToggleDescription}
+              className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
+              aria-label="Afficher la description"
+            >
+              <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Description (visible uniquement si cliqué) */}
+      {showDescription && link.description && (
+        <div className="mb-3 lg:mb-4 animate-fadeIn">
+          <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
+            <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
+              {link.description}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Player vidéo */}
+      <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
+        <div className="aspect-video bg-black">
+          <video 
+            src={link.url} 
+            className="w-full h-full object-contain"
+            controls
+            preload="metadata"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onError={(e) => {
+              const target = e.target as HTMLVideoElement;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.className = "w-full h-full flex flex-col items-center justify-center bg-base-200 p-4";
+                fallbackDiv.innerHTML = `
+                  <div class="text-center mb-3">
+                    <Video class="w-12 h-12 text-base-content/30 mx-auto mb-2" />
+                    <p class="text-sm text-base-content/70 mb-2">Vidéo non disponible</p>
+                  </div>
+                  <a href="${link.url}" target="_blank" rel="noopener noreferrer" 
+                     class="btn btn-xs btn-outline">
+                    Télécharger la vidéo
+                  </a>
+                `;
+                parent.appendChild(fallbackDiv);
+              }
+            }}
+          />
+        </div>
+        {!isPlaying && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/10 group">
+            <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+              <Play className="w-8 h-8 text-white fill-white" />
+            </div>
+          </div>
+        )}
+        <a 
+          href={link.url} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group"
+          title="Ouvrir la vidéo"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleIncrementClick(e as any);
+          }}
+        >
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
+            <ExternalLink className="w-8 h-8 text-white mb-1" />
+            <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">Ouvrir</span>
+          </div>
+        </a>
+      </div>
+
+      {/* Footer avec actions */}
+      <div className="flex justify-between items-center mt-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLike}
+            disabled={isLiking}
+            className={`btn btn-xs gap-2 ${localIsLiked ? 'btn-error' : 'btn-ghost hover:btn-error'}`}
+            title={localIsLiked ? "Retirer le like" : "Ajouter un like"}
+          >
+            {isLiking ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <>
+                <Heart className={`w-4 h-4 ${localIsLiked ? 'fill-current' : ''}`} />
+                <span className="text-sm font-medium">{localLikesCount}</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="badge badge-success badge-sm">Vidéo</span>
+          <button
+            onClick={handleIncrementClick}
+            disabled={isLoadingClick}
+            className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+            title="Visiter le lien"
+          >
+            {isLoadingClick ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <>
+                <ExternalLink className="w-4 h-4" />
+                <span className="text-xs hidden sm:inline">Ouvrir</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
+        {clicks > 0 && (
+          <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+            <Zap className="w-3 h-3" />
+            <span>{clicks} clic{clicks > 1 ? 's' : ''}</span>
+          </div>
+        )}
+        
+        {localLikesCount > 0 && (
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
+            <Heart className="w-3 h-3" />
+            <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
+VideoCard.displayName = 'VideoCard'
 
 /* ------------------ IMAGE CARD COMPONENT ------------------ */
 const ImageCard = memo(({ 
@@ -461,111 +755,117 @@ const LinkWithDescription = memo(({
 
   const isYouTube = isYouTubeUrl(link.url)
   const isImage = isImageUrl(link.url)
+  const isVideo = isVideoUrl(link.url)
   const isPdf = isPdfUrl(link.url)
 
+  // Si c'est une vidéo, utiliser VideoCard
+  if (isVideo) {
+    return <VideoCard link={link} onLikeToggle={onLikeToggle} />
+  }
+
+  // Si c'est une image, utiliser ImageCard
+  if (isImage) {
+    return <ImageCard link={link} onLikeToggle={onLikeToggle} />
+  }
+
+  // Sinon, afficher la carte normale pour les autres liens
   return (
     <div className="space-y-4">
       {/* Prévisualisation YouTube - conditionnelle */}
       {isYouTube && <YoutubePreview url={link.url} />}
 
-      {/* Si c'est une image, afficher le composant ImageCard */}
-      {isImage ? (
-        <ImageCard link={link} onLikeToggle={onLikeToggle} />
-      ) : (
-        /* Sinon, afficher la carte normale pour les autres liens */
-        <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
-          {/* En-tête avec titre, bouton info et likes */}
-          <div className="flex items-center justify-between mb-3 lg:mb-4">
-            <div className="flex items-center gap-2 lg:gap-3 min-w-0">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-white/50 dark:bg-black/30 flex items-center justify-center">
-                  {isPdf ? (
-                    <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                    </svg>
-                  ) : isYouTube ? (
-                    <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
-                    </svg>
-                  ) : (
-                    <Globe className="w-4 h-4 lg:w-5 lg:h-5 opacity-70" />
-                  )}
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
-                <span className="text-xs opacity-60 truncate block">
-                  @{link.pseudo}
-                </span>
-              </div>
-            </div>
-            
-            {/* Section likes et description */}
-            <div className="flex items-center gap-2">
-              {/* Bouton like */}
-              <button
-                onClick={handleLike}
-                disabled={isLiking}
-                className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
-                title={localIsLiked ? "Retirer le like" : "Liker ce lien"}
-              >
-                <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
-                {localLikesCount > 0 && (
-                  <span className="text-xs mt-1">{localLikesCount}</span>
+      <div className={`${bgColors[colorIndex]} p-4 lg:p-5 rounded-xl border ${borderColors[colorIndex]} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}>
+        {/* En-tête avec titre, bouton info et likes */}
+        <div className="flex items-center justify-between mb-3 lg:mb-4">
+          <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-white/50 dark:bg-black/30 flex items-center justify-center">
+                {isPdf ? (
+                  <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                  </svg>
+                ) : isYouTube ? (
+                  <svg className="w-4 h-4 lg:w-5 lg:h-5 opacity-70 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                  </svg>
+                ) : (
+                  <Globe className="w-4 h-4 lg:w-5 lg:h-5 opacity-70" />
                 )}
-              </button>
-              
-              {/* Bouton pour afficher/masquer la description */}
-              {link.description && (
-                <button
-                  onClick={handleToggleDescription}
-                  className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
-                  aria-label="Afficher la description"
-                >
-                  <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
-                </button>
+              </div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-sm lg:text-base truncate">{link.title}</h3>
+              <span className="text-xs opacity-60 truncate block">
+                @{link.pseudo}
+              </span>
+            </div>
+          </div>
+          
+          {/* Section likes et description */}
+          <div className="flex items-center gap-2">
+            {/* Bouton like */}
+            <button
+              onClick={handleLike}
+              disabled={isLiking}
+              className={`flex flex-col items-center ${isLiking ? 'opacity-50' : ''}`}
+              title={localIsLiked ? "Retirer le like" : "Liker ce lien"}
+            >
+              <Heart className={`w-5 h-5 ${localIsLiked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+              {localLikesCount > 0 && (
+                <span className="text-xs mt-1">{localLikesCount}</span>
               )}
-            </div>
-          </div>
-
-          {/* Description (visible uniquement si cliqué) */}
-          {showDescription && link.description && (
-            <div className="mb-3 lg:mb-4 animate-fadeIn">
-              <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
-                <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
-                  {link.description}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Lien principal */}
-          <div className="mt-3 lg:mt-4">
-            <LinkComponent 
-              socialLink={link} 
-              readonly 
-              showDescription={false}
-            />
-          </div>
-
-          {/* Stats */}
-          <div className="mt-3 flex justify-between items-center">
-            {clicks > 0 && (
-              <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
-                <Zap className="w-3 h-3" />
-                <span>{clicks} clic{clicks > 1 ? 's' : ''}</span>
-              </div>
-            )}
+            </button>
             
-            {localLikesCount > 0 && (
-              <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
-                <Heart className="w-3 h-3" />
-                <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
-              </div>
+            {/* Bouton pour afficher/masquer la description */}
+            {link.description && (
+              <button
+                onClick={handleToggleDescription}
+                className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors ml-1"
+                aria-label="Afficher la description"
+              >
+                <Info className={`w-3.5 h-3.5 lg:w-4 lg:h-4 ${showDescription ? 'text-primary' : 'opacity-60'}`} />
+              </button>
             )}
           </div>
         </div>
-      )}
+
+        {/* Description (visible uniquement si cliqué) */}
+        {showDescription && link.description && (
+          <div className="mb-3 lg:mb-4 animate-fadeIn">
+            <div className="bg-white/60 dark:bg-black/30 p-3 rounded-lg border border-base-300/50">
+              <p className="text-sm text-base-content leading-relaxed whitespace-pre-line">
+                {link.description}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Lien principal */}
+        <div className="mt-3 lg:mt-4">
+          <LinkComponent 
+            socialLink={link} 
+            readonly 
+            showDescription={false}
+          />
+        </div>
+
+        {/* Stats */}
+        <div className="mt-3 flex justify-between items-center">
+          {clicks > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+              <Zap className="w-3 h-3" />
+              <span>{clicks} clic{clicks > 1 ? 's' : ''}</span>
+            </div>
+          )}
+          
+          {localLikesCount > 0 && (
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${localIsLiked ? 'text-red-500' : 'opacity-80'} bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full`}>
+              <Heart className="w-3 h-3" />
+              <span>{localLikesCount} like{localLikesCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 })
@@ -627,19 +927,27 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   const [showOnlyWithDescription, setShowOnlyWithDescription] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all')
   
+  // État pour éviter l'hydratation
+  const [mounted, setMounted] = useState(false)
+  
   // Debounce pour la recherche
   const debouncedSearch = useDebounce(search, 300)
   const isFirstRender = useRef(true)
 
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   // Calculer les statistiques avec useMemo
-  const { totalLikes, linksWithDescription, totalClicks, imageLinksCount } = useMemo(() => {
+  const { totalLikes, linksWithDescription, totalClicks, imageLinksCount, videoLinksCount } = useMemo(() => {
     return {
       totalLikes: links.reduce((sum, link) => sum + (link.likesCount || 0), 0),
       linksWithDescription: links.filter(link => 
         link.description && link.description.trim() !== ""
       ).length,
       totalClicks: links.reduce((sum, link) => sum + link.clicks, 0),
-      imageLinksCount: links.filter(link => isImageUrl(link.url)).length
+      imageLinksCount: links.filter(link => isImageUrl(link.url)).length,
+      videoLinksCount: links.filter(link => isVideoUrl(link.url)).length
     }
   }, [links])
 
@@ -655,10 +963,13 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       setPseudo(userInfo.pseudo)
       setTheme(userInfo.theme)
 
-      document.documentElement.setAttribute(
-        "data-theme",
-        userInfo.theme || "retro"
-      )
+      // Appliquer le thème seulement côté client
+      if (mounted) {
+        document.documentElement.setAttribute(
+          "data-theme",
+          userInfo.theme || "retro"
+        )
+      }
 
       const fetchedLinks = await getSocialLinksWithLikes(
         resolvedParams.pseudo,
@@ -671,7 +982,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
     } finally {
       setLoading(false)
     }
-  }, [params, currentUser?.id])
+  }, [params, currentUser?.id, mounted])
 
   useEffect(() => {
     fetchData()
@@ -775,7 +1086,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       );
 
       // Stocker en localStorage pour persistance
-      if (typeof window !== 'undefined') {
+      if (mounted && typeof window !== 'undefined') {
         const likedLinksKey = `likedLinks_${currentUser.id}`;
         const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
         
@@ -813,7 +1124,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         );
         
         // Mettre à jour le localStorage
-        if (currentUser && typeof window !== 'undefined') {
+        if (mounted && currentUser && typeof window !== 'undefined') {
           const likedLinksKey = `likedLinks_${currentUser.id}`;
           const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
           const currentLink = links.find(link => link.id === linkId);
@@ -835,11 +1146,11 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         fetchData();
       }
     }
-  }, [isSignedIn, currentUser, links, fetchData])
+  }, [isSignedIn, currentUser, links, fetchData, mounted])
 
   /* ----------- RESTAURER LES LIKES DEPUIS LE LOCALSTORAGE ----------- */
   useEffect(() => {
-    if (isSignedIn && currentUser && links.length > 0) {
+    if (mounted && isSignedIn && currentUser && links.length > 0) {
       const likedLinksKey = `likedLinks_${currentUser.id}`;
       const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
       
@@ -850,7 +1161,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         }))
       );
     }
-  }, [isSignedIn, currentUser, links.length])
+  }, [mounted, isSignedIn, currentUser, links.length])
 
   /* ----------- HANDLERS ----------- */
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -903,9 +1214,13 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   )
 
   const renderLinksList = () => {
-    // Séparer les images des autres liens pour un meilleur affichage
+    // Séparer les médias des autres liens pour un meilleur affichage
+    const videoLinks = processedLinks.filter(link => isVideoUrl(link.url))
     const imageLinks = processedLinks.filter(link => isImageUrl(link.url))
-    const otherLinks = processedLinks.filter(link => !isImageUrl(link.url))
+    const otherLinks = processedLinks.filter(link => 
+      !isVideoUrl(link.url) && !isImageUrl(link.url) && !isPdfUrl(link.url)
+    )
+    const pdfLinks = processedLinks.filter(link => isPdfUrl(link.url))
 
     return (
       <>
@@ -917,6 +1232,25 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             </span>
           </h2>
         </div>
+        
+        {/* Section des vidéos */}
+        {videoLinks.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Video className="w-5 h-5 text-green-500" />
+              <h3 className="font-semibold text-base">Vidéos ({videoLinks.length})</h3>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {videoLinks.map(link => (
+                <VideoCard 
+                  key={link.id} 
+                  link={link}
+                  onLikeToggle={handleLikeToggle}
+                />
+              ))}
+            </div>
+          </div>
+        )}
         
         {/* Section des images */}
         {imageLinks.length > 0 && (
@@ -937,10 +1271,31 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           </div>
         )}
         
+        {/* Section des PDFs */}
+        {pdfLinks.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+              </svg>
+              <h3 className="font-semibold text-base">PDFs ({pdfLinks.length})</h3>
+            </div>
+            <div className="space-y-4">
+              {pdfLinks.map(link => (
+                <LinkWithDescription 
+                  key={link.id} 
+                  link={link}
+                  onLikeToggle={handleLikeToggle}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
         {/* Section des autres liens */}
         {otherLinks.length > 0 && (
           <div className="space-y-4">
-            {imageLinks.length > 0 && (
+            {(imageLinks.length > 0 || videoLinks.length > 0 || pdfLinks.length > 0 || otherLinks.length > 0) && (
               <div className="flex items-center gap-2 mb-3">
                 <LinkIcon className="w-5 h-5 text-secondary" />
                 <h3 className="font-semibold text-base">Autres liens ({otherLinks.length})</h3>
@@ -1335,22 +1690,40 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
     </div>
   )
 
-  return (
-   <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50">
-  <div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
-    <div className="flex justify-center mb-6 lg:mb-8">
-      {isSignedIn && currentUser && (
-        <div className="flex items-center gap-3 bg-base-100/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-base-300 shadow-sm">
-          <Avatar pseudo={currentUser.firstName || currentUser.username || "Moi"} />
-          <div className="text-sm">
-            <div className="font-medium text-primary">
-              {currentUser.firstName || currentUser.username || currentUser.id.slice(0,8)}
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-base-100">
+        <div className="container mx-auto px-4 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-base-300 rounded w-48 mb-4"></div>
+            <div className="h-4 bg-base-300 rounded w-32 mb-8"></div>
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-20 bg-base-300 rounded-xl"></div>
+              ))}
             </div>
-            <div className="text-xs opacity-60">Connecté</div>
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200/50">
+      <div className="container mx-auto px-4 py-6 lg:py-8 max-w-6xl">
+        <div className="flex justify-center mb-6 lg:mb-8">
+          {isSignedIn && currentUser && (
+            <div className="flex items-center gap-3 bg-base-100/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-base-300 shadow-sm">
+              <Avatar pseudo={currentUser.firstName || currentUser.username || "Moi"} />
+              <div className="text-sm">
+                <div className="font-medium text-primary">
+                  {currentUser.firstName || currentUser.username || currentUser.id.slice(0,8)}
+                </div>
+                <div className="text-xs opacity-60">Connecté</div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {renderMobileView()}
         {renderDesktopView()}

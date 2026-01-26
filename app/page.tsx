@@ -7,7 +7,7 @@ import { useEffect, useState, useRef, useCallback, memo, useMemo } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme, incrementClickCount } from "./server";
 import { SocialLink } from "@prisma/client";
-import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2, Check, XCircle, FolderOpen, Info, Video } from "lucide-react";
 import socialLinksData from "./socialLinksData";
 import EmptyState from "./components/EmptyState";
 import LinkComponent from "./components/LinkComponent";
@@ -31,9 +31,21 @@ const isValidURL = (url: string) => {
   }
 };
 
-// Fonction pour vérifier le type de fichier
+// Fonction pour vérifier le type de fichier - AJOUT VIDÉO
 const isImageFile = (file: File) => file.type.startsWith('image/');
 const isPDFFile = (file: File) => file.type === 'application/pdf';
+const isVideoFile = (file: File) => file.type.startsWith('video/');
+
+// Formats vidéo supportés
+const SUPPORTED_VIDEO_FORMATS = [
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/avi',
+  'video/mpeg'
+];
 
 // Fonction pour détecter si une URL est une image
 const isImageUrl = (url: string): boolean => {
@@ -45,6 +57,12 @@ const isImageUrl = (url: string): boolean => {
 const isPdfUrl = (url: string): boolean => {
   if (!url) return false;
   return /\.pdf$/i.test(url);
+};
+
+// Fonction pour détecter si une URL est une vidéo - NOUVELLE FONCTION
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv|m4v|mpg|mpeg)$/i.test(url);
 };
 
 // Fonction pour extraire l'ID YouTube
@@ -89,14 +107,77 @@ const isYouTubeUrl = (url: string): boolean => {
   return url.includes('youtube.com') || url.includes('youtu.be');
 };
 
-// Composant de prévisualisation pour fichiers (memoïsé)
-const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' }) => {
-  const [imageUrl, setImageUrl] = useState<string>('');
+// Composant LinkifyText pour rendre les liens cliquables
+const LinkifyText = memo(({ text }: { text: string }) => {
+  if (!text || typeof text !== 'string') return null;
+
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  
+  urlRegex.lastIndex = 0;
+  
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    
+    let url = match[0];
+    let displayText = url;
+    
+    if (url.startsWith('www.')) {
+      url = 'https://' + url;
+    }
+    
+    if (displayText.length > 50) {
+      displayText = displayText.substring(0, 47) + '...';
+    }
+    
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline font-medium break-all inline-flex items-center gap-1"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }}
+        title={`Ouvrir ${url}`}
+      >
+        {displayText}
+        <ExternalLink className="w-3 h-3" />
+      </a>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  
+  if (parts.length === 0) {
+    return <>{text}</>;
+  }
+  
+  return <>{parts}</>;
+});
+
+LinkifyText.displayName = 'LinkifyText';
+
+// Composant de prévisualisation pour fichiers (memoïsé) - AJOUT VIDÉO
+const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' | 'video' }) => {
+  const [previewUrl, setPreviewUrl] = useState<string>('');
   
   useEffect(() => {
-    if (type === 'image') {
+    if (type === 'image' || type === 'video') {
       const url = URL.createObjectURL(file);
-      setImageUrl(url);
+      setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
   }, [file, type]);
@@ -104,9 +185,9 @@ const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' })
   if (type === 'image') {
     return (
       <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-base-300">
-        {imageUrl && (
+        {previewUrl && (
           <img 
-            src={imageUrl} 
+            src={previewUrl} 
             alt="Aperçu de l'image"
             className="w-full h-full object-contain"
             loading="lazy"
@@ -116,6 +197,30 @@ const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' })
           <div className="flex items-center gap-2 text-white">
             <ImageIcon className="w-4 h-4" />
             <span className="text-sm font-medium">Aperçu de l'image</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'video') {
+    return (
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-base-300">
+        {previewUrl && (
+          <video 
+            src={previewUrl}
+            className="w-full h-full object-contain"
+            controls
+            preload="metadata"
+            poster={file.type.startsWith('video/') ? undefined : ''}
+          >
+            Votre navigateur ne supporte pas la lecture de vidéos.
+          </video>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
+          <div className="flex items-center gap-2 text-white">
+            <Video className="w-4 h-4" />
+            <span className="text-sm font-medium">Aperçu de la vidéo</span>
           </div>
         </div>
       </div>
@@ -156,9 +261,106 @@ const FilePreview = memo(({ file, type }: { file: File, type: 'image' | 'pdf' })
 
 FilePreview.displayName = 'FilePreview';
 
-// Composant de prévisualisation pour URL (memoïsé)
+// Composant pour prévisualiser plusieurs fichiers
+const MultipleFilesPreview = memo(({ 
+  files, 
+  onRemove,
+  fileType 
+}: { 
+  files: File[], 
+  onRemove: (index: number) => void,
+  fileType: 'image' | 'video'
+}) => {
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  
+  useEffect(() => {
+    const urls = files.map(file => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+    
+    return () => {
+      urls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [files]);
+
+  if (files.length === 0) return null;
+
+  const typeLabel = fileType === 'image' ? 'image(s)' : 'vidéo(s)';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {fileType === 'image' ? (
+            <ImageIcon className="w-5 h-5 text-primary" />
+          ) : (
+            <Video className="w-5 h-5 text-primary" />
+          )}
+          <span className="font-medium text-sm">
+            {files.length} {typeLabel} sélectionnée{files.length > 1 ? 's' : ''}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            for (let i = files.length - 1; i >= 0; i--) {
+              onRemove(i);
+            }
+          }}
+          className="btn btn-xs btn-ghost text-error hover:bg-error/10"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Tout supprimer
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2">
+        {files.map((file, index) => (
+          <div key={index} className="relative group">
+            <div className="aspect-square rounded-lg overflow-hidden border border-base-300 bg-base-200">
+              {fileType === 'image' && previewUrls[index] ? (
+                <img 
+                  src={previewUrls[index]} 
+                  alt={`Aperçu ${index + 1}`}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                />
+              ) : fileType === 'video' && previewUrls[index] ? (
+                <video 
+                  src={previewUrls[index]}
+                  className="w-full h-full object-cover"
+                  muted
+                  preload="metadata"
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onRemove(index)}
+                className="absolute -top-2 -right-2 bg-error text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:scale-110 z-10"
+                title="Supprimer ce fichier"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="mt-1">
+              <p className="text-xs truncate px-1">{file.name}</p>
+              <p className="text-xs opacity-70">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="text-xs text-base-content/70 flex items-center gap-2">
+        <Check className="w-3 h-3 text-success" />
+        <span>Les fichiers seront uploadés en une seule fois</span>
+      </div>
+    </div>
+  );
+});
+
+MultipleFilesPreview.displayName = 'MultipleFilesPreview';
+
+// Composant de prévisualisation pour URL (memoïsé) - AJOUT VIDÉO
 const UrlPreview = memo(({ url }: { url: string }) => {
-  const [previewType, setPreviewType] = useState<'none' | 'youtube' | 'image' | 'pdf'>('none');
+  const [previewType, setPreviewType] = useState<'none' | 'youtube' | 'image' | 'pdf' | 'video'>('none');
   
   useEffect(() => {
     if (isYouTubeUrl(url)) {
@@ -167,6 +369,8 @@ const UrlPreview = memo(({ url }: { url: string }) => {
       setPreviewType('image');
     } else if (isPdfUrl(url)) {
       setPreviewType('pdf');
+    } else if (isVideoUrl(url)) {
+      setPreviewType('video');
     } else {
       setPreviewType('none');
     }
@@ -254,6 +458,27 @@ const UrlPreview = memo(({ url }: { url: string }) => {
     );
   }
 
+  if (previewType === 'video') {
+    return (
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-base-300">
+        <video 
+          src={url}
+          className="w-full h-full object-contain"
+          controls
+          preload="metadata"
+        >
+          Votre navigateur ne supporte pas la lecture de vidéos.
+        </video>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3">
+          <div className="flex items-center gap-2 text-white">
+            <Video className="w-4 h-4" />
+            <span className="text-sm font-medium">Aperçu de la vidéo</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (previewType === 'pdf') {
     return (
       <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10 p-6 rounded-lg border border-red-200 dark:border-red-800/30">
@@ -308,7 +533,254 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
-// Composant ImageCard pour afficher les images directement
+// Composant VideoCard pour afficher les vidéos directement - NOUVEAU COMPOSANT
+const VideoCard = memo(({ 
+  link, 
+  onRemove, 
+  showDescription,
+  fetchLinks 
+}: { 
+  link: SocialLinkWithLikes;
+  onRemove: (linkId: string) => Promise<void>;
+  showDescription: boolean;
+  fetchLinks: () => Promise<void>;
+}) => {
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [isLoadingLike, setIsLoadingLike] = useState(false);
+  const [likesCount, setLikesCount] = useState(link.likesCount || 0);
+  const [isLiked, setIsLiked] = useState(link.isLikedByCurrentUser || false);
+  const [clicks, setClicks] = useState(link.clicks || 0);
+  const [isLoadingClick, setIsLoadingClick] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const handleRemove = async () => {
+    setIsRemoving(true);
+    try {
+      await onRemove(link.id);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const handleLinkClick = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    if (isLoadingClick) return;
+    
+    setIsLoadingClick(true);
+    
+    try {
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+      
+      try {
+        await incrementClickCount(link.id);
+        setClicks(prev => prev + 1);
+        if (fetchLinks) {
+          await fetchLinks();
+        }
+      } catch (apiError) {
+        console.error('Erreur server action, tentative avec fetch:', apiError);
+        
+        const response = await fetch('/api/clicks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ linkId: link.id }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClicks(data.clicks || clicks + 1);
+          if (fetchLinks) {
+            await fetchLinks();
+          }
+        } else {
+          setClicks(prev => prev + 1);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      setClicks(prev => prev + 1);
+    } finally {
+      setIsLoadingClick(false);
+    }
+  };
+
+  const handleIncrementClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    handleLinkClick(event);
+  };
+
+  return (
+    <div className="card bg-base-100 border border-base-300 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:border-primary/50 w-full">
+      <div className="p-4">
+        {/* En-tête */}
+        <div className="flex justify-between items-start mb-3 w-full">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="font-bold text-base truncate flex items-center gap-2">
+                <Video className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="truncate">{link.title}</span>
+              </h3>
+              {link.pseudo && (
+                <span className="badge badge-primary badge-sm flex-shrink-0">
+                  {link.pseudo}
+                </span>
+              )}
+            </div>
+            
+            {/* Description */}
+            {showDescription && link.description && (
+              <div className="mb-3">
+                <div className="bg-base-200/50 dark:bg-base-800/30 p-3 rounded-lg border border-base-300">
+                  <div className="text-sm text-base-content dark:text-base-content/90 break-words leading-relaxed whitespace-pre-wrap">
+                    <LinkifyText text={link.description} />
+                  </div>
+                </div>
+                
+                {(() => {
+                  const urlMatches = link.description.match(/(https?:\/\/[^\s]+)/g);
+                  if (urlMatches && urlMatches.length > 0) {
+                    return (
+                      <div className="mt-1 text-xs opacity-70 flex items-center gap-1">
+                        <span className="flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" />
+                          <span>{urlMatches.length} lien{urlMatches.length > 1 ? 's' : ''} dans la description</span>
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-shrink-0 ml-2">
+            <button
+              onClick={handleRemove}
+              disabled={isRemoving}
+              className="btn btn-ghost btn-xs btn-circle hover:btn-error text-base-content/50 hover:text-error transition-all"
+              title="Supprimer la vidéo"
+            >
+              {isRemoving ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Player vidéo */}
+        <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
+          <div className="aspect-video bg-black">
+            <video 
+              src={link.url} 
+              className="w-full h-full object-contain"
+              controls
+              preload="metadata"
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onError={(e) => {
+                const target = e.target as HTMLVideoElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  const fallbackDiv = document.createElement('div');
+                  fallbackDiv.className = "w-full h-full flex flex-col items-center justify-center bg-base-200 p-4";
+                  fallbackDiv.innerHTML = `
+                    <div class="text-center mb-3">
+                      <Video class="w-12 h-12 text-base-content/30 mx-auto mb-2" />
+                      <p class="text-sm text-base-content/70 mb-2">Vidéo non disponible</p>
+                    </div>
+                    <button class="btn btn-xs btn-outline">
+                      Télécharger la vidéo
+                    </button>
+                  `;
+                  parent.appendChild(fallbackDiv);
+                }
+              }}
+            />
+          </div>
+          <button
+            className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-all duration-300 group cursor-pointer"
+            onClick={handleLinkClick}
+            title="Ouvrir la vidéo"
+            disabled={isLoadingClick}
+          >
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center">
+              <ExternalLink className="w-8 h-8 text-white mb-1" />
+              <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">Ouvrir</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Footer avec likes et actions */}
+        <div className="flex justify-between items-center w-full">
+          <div className="flex items-center gap-2">
+            <button
+              disabled={isLoadingLike}
+              className={`btn btn-xs gap-2 ${isLiked ? 'btn-error text-white' : 'btn-ghost hover:btn-error'}`}
+            >
+              {isLoadingLike ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <>
+                  <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+                  <span className="text-sm font-medium">{likesCount}</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="badge badge-success badge-sm">Vidéo</span>
+            <button
+              onClick={handleIncrementClick}
+              disabled={isLoadingClick}
+              className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+              title="Visiter le lien"
+            >
+              {isLoadingClick ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="text-xs hidden sm:inline">Ouvrir</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
+          {clicks > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+              <span>👁️ {clicks} clic{clicks > 1 ? 's' : ''}</span>
+            </div>
+          )}
+          
+          {likesCount > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-80 bg-white/50 dark:bg-black/30 px-2 py-1 rounded-full">
+              <Heart className="w-3 h-3" />
+              <span>{likesCount} like{likesCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+VideoCard.displayName = 'VideoCard';
+
+// ImageCard existant (gardé pour référence mais fusionné dans la logique)
 const ImageCard = memo(({ 
   link, 
   onRemove, 
@@ -336,28 +808,6 @@ const ImageCard = memo(({
     }
   };
 
-  const handleLike = async () => {
-    if (isLoadingLike) return;
-    
-    setIsLoadingLike(true);
-    try {
-      // Pour éviter l'erreur, on simule le like localement
-      const newIsLiked = !isLiked;
-      setIsLiked(newIsLiked);
-      setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
-      
-      toast.success(newIsLiked ? "Like ajouté!" : "Like retiré!");
-    } catch (error) {
-      console.error(error);
-      // Annuler les changements en cas d'erreur
-      setIsLiked(!isLiked);
-      setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
-      toast.error("Erreur lors du traitement du like");
-    } finally {
-      setIsLoadingLike(false);
-    }
-  };
-
   const handleLinkClick = async (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -369,26 +819,17 @@ const ImageCard = memo(({
     setIsLoadingClick(true);
     
     try {
-      // 1. Ouvrir le lien immédiatement pour une meilleure UX
       window.open(link.url, '_blank', 'noopener,noreferrer');
       
-      // 2. Incrémenter le compteur via l'API server action
       try {
         await incrementClickCount(link.id);
-        
-        // Mettre à jour l'état local immédiatement
         setClicks(prev => prev + 1);
-        
-        // Rafraîchir les données pour synchroniser
         if (fetchLinks) {
           await fetchLinks();
         }
-        
-        console.log('Click incrementé avec succès');
       } catch (apiError) {
         console.error('Erreur server action, tentative avec fetch:', apiError);
         
-        // Fallback: essayer avec fetch si l'action serveur échoue
         const response = await fetch('/api/clicks', {
           method: 'POST',
           headers: {
@@ -404,14 +845,12 @@ const ImageCard = memo(({
             await fetchLinks();
           }
         } else {
-          // Fallback: incrémenter localement
           setClicks(prev => prev + 1);
         }
       }
       
     } catch (error) {
       console.error('Erreur:', error);
-      // En cas d'erreur, incrémenter localement quand même
       setClicks(prev => prev + 1);
     } finally {
       setIsLoadingClick(false);
@@ -425,7 +864,7 @@ const ImageCard = memo(({
   return (
     <div className="card bg-base-100 border border-base-300 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:border-primary/50 w-full">
       <div className="p-4">
-        {/* En-tête - MODIFIÉ pour prendre toute la largeur */}
+        {/* En-tête */}
         <div className="flex justify-between items-start mb-3 w-full">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -440,10 +879,30 @@ const ImageCard = memo(({
               )}
             </div>
             
+            {/* Description */}
             {showDescription && link.description && (
-              <p className="text-sm text-base-content/70 mb-3 break-words">
-                {link.description}
-              </p>
+              <div className="mb-3">
+                <div className="bg-base-200/50 dark:bg-base-800/30 p-3 rounded-lg border border-base-300">
+                  <div className="text-sm text-base-content dark:text-base-content/90 break-words leading-relaxed whitespace-pre-wrap">
+                    <LinkifyText text={link.description} />
+                  </div>
+                </div>
+                
+                {(() => {
+                  const urlMatches = link.description.match(/(https?:\/\/[^\s]+)/g);
+                  if (urlMatches && urlMatches.length > 0) {
+                    return (
+                      <div className="mt-1 text-xs opacity-70 flex items-center gap-1">
+                        <span className="flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" />
+                          <span>{urlMatches.length} lien{urlMatches.length > 1 ? 's' : ''} dans la description</span>
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             )}
           </div>
 
@@ -503,14 +962,12 @@ const ImageCard = memo(({
           </button>
         </div>
 
-        {/* Footer avec likes et actions - MODIFIÉ pour prendre toute la largeur */}
+        {/* Footer avec likes et actions */}
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
             <button
-              
               disabled={isLoadingLike}
               className={`btn btn-xs gap-2 ${isLiked ? 'btn-error text-white' : 'btn-ghost hover:btn-error'}`}
-             
             >
               {isLoadingLike ? (
                 <span className="loading loading-spinner loading-xs"></span>
@@ -573,7 +1030,7 @@ export default function Home() {
   const [pseudo, setPseudo] = useState<string | null | undefined>(null);
   const [theme, setTheme] = useState<string | null | undefined>(null);
   const [theme2, setTheme2] = useState<string | null | undefined>(null);
-  const [link, setLink] = useState<string>(""); // Toujours initialisé avec une chaîne vide
+  const [link, setLink] = useState<string>("");
   const [socialPseudo, setSocialPseudo] = useState<string>("");
   const [socialDescription, setSocialDescription] = useState<string>("");
   const [title, setTitle] = useState<string>(socialLinksData[0].name);
@@ -583,10 +1040,11 @@ export default function Home() {
   const [loading, setLoading] = useState<boolean>(true);
   
   // États pour l'upload de fichier
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [useFileUpload, setUseFileUpload] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'single' | 'multiple'>('single');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Debounce pour la recherche
@@ -615,7 +1073,6 @@ export default function Home() {
         setTheme2(userInfo.theme);
       }
 
-      // Forcer le rafraîchissement sans cache
       const fetchedLinks = await getSocialLinksWithLikes(email, currentUserId);
       if (fetchedLinks) {
         setLinks(fetchedLinks);
@@ -650,117 +1107,183 @@ export default function Home() {
 
   // Réinitialiser les états du fichier quand on change de type
   useEffect(() => {
-    if (title !== "Image" && title !== "Document PDF") {
-      setSelectedFile(null);
+    if (!["Image", "Document PDF", "Vidéo"].includes(title)) {
+      setSelectedFiles([]);
       setUseFileUpload(false);
-      setLink(""); // Toujours une chaîne vide, jamais undefined
+      setLink("");
+    } else if (title === "Document PDF") {
+      // Mode single pour PDF
+      setUploadMode('single');
+    } else if (title === "Vidéo") {
+      // Mode single pour Vidéo
+      setUploadMode('single');
     }
   }, [title]);
 
-  // Gérer la sélection de fichier
+  // Gérer la sélection de fichiers
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     // Vérifier le type de fichier selon le titre sélectionné
-    if (title === "Image" && !isImageFile(file)) {
-      toast.error("Veuillez sélectionner une image (JPEG, PNG, GIF, etc.)");
+    const invalidFiles = files.filter(file => {
+      if (title === "Image" && !isImageFile(file)) return true;
+      if (title === "Document PDF" && !isPDFFile(file)) return true;
+      if (title === "Vidéo" && !isVideoFile(file)) return true;
+      return false;
+    });
+
+    if (invalidFiles.length > 0) {
+      toast.error(`Format de fichier non supporté. Utilisez ${title === "Image" ? "des images" : title === "Vidéo" ? "des vidéos" : "un PDF"}.`);
       return;
     }
 
-    if (title === "Document PDF" && !isPDFFile(file)) {
-      toast.error("Veuillez sélectionner un fichier PDF");
+    // Limite de taille (50MB pour vidéos, 10MB pour le reste)
+    const oversizedFiles = files.filter(file => {
+      const maxSize = title === "Vidéo" ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      return file.size > maxSize;
+    });
+    
+    if (oversizedFiles.length > 0) {
+      const maxMB = title === "Vidéo" ? 50 : 10;
+      toast.error(`Certains fichiers sont trop volumineux (max ${maxMB}MB chacun)`);
       return;
     }
 
-    // Limite de taille (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Le fichier est trop volumineux (max 10MB)");
+    // Vérifier les formats vidéo supportés
+    if (title === "Vidéo") {
+      const unsupportedVideos = files.filter(file => 
+        !SUPPORTED_VIDEO_FORMATS.includes(file.type)
+      );
+      if (unsupportedVideos.length > 0) {
+        toast.error('Format vidéo non supporté. Utilisez MP4, WebM, OGG, MOV ou AVI.');
+        return;
+      }
+    }
+
+    // Limite du nombre de fichiers
+    if (title === "Image" && uploadMode === 'multiple' && files.length + selectedFiles.length > 20) {
+      toast.error(`Maximum 20 images autorisées`);
       return;
     }
 
-    setSelectedFile(file);
+    // Pour PDF et Vidéo, on ne garde qu'un seul fichier
+    if (title === "Document PDF" || title === "Vidéo") {
+      setSelectedFiles([files[0]]);
+      setUploadMode('single');
+    } else if (title === "Image") {
+      // Pour les images, ajouter aux fichiers existants
+      if (uploadMode === 'multiple') {
+        setSelectedFiles(prev => [...prev, ...files].slice(0, 20));
+      } else {
+        setSelectedFiles([files[0]]);
+      }
+    }
+
     setUseFileUpload(true);
-    // Réinitialiser le champ URL quand on sélectionne un fichier
     setLink("");
-  }, [title]);
+  }, [title, uploadMode, selectedFiles]);
 
-  // Upload du fichier
-  const handleFileUpload = useCallback(async () => {
-    if (!selectedFile) return;
+  // Upload des fichiers
+  const handleFilesUpload = useCallback(async () => {
+    if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
     setUploadProgress(0);
+    let successfulUploads = 0;
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('email', email);
-      formData.append('title', title);
-      formData.append('pseudo', socialPseudo);
-      formData.append('description', socialDescription);
-
-      // Simuler la progression
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return prev;
           }
-          return prev + 10;
+          return prev + 5;
         });
       }, 200);
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('email', email);
+        formData.append('title', title);
+        formData.append('pseudo', socialPseudo);
+        formData.append('description', socialDescription);
+        if (selectedFiles.length > 1) {
+          formData.append('index', i.toString());
+          formData.append('total', selectedFiles.length.toString());
+        }
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (!response.ok) {
-        throw new Error('Upload échoué');
+        if (!response.ok) {
+          throw new Error(`Upload du fichier ${i + 1} échoué`);
+        }
+
+        const data = await response.json();
+        
+        const newLink = await addSocialLink(
+          email, 
+          title, 
+          data.url, 
+          socialPseudo, 
+          socialDescription
+        );
+        
+        if (newLink) {
+          successfulUploads++;
+        }
+
+        setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
       }
 
-      const data = await response.json();
-      
-      // Utiliser l'URL retournée par l'API
-      const fileUrl = data.url;
-      
-      // Ajouter le lien avec l'URL du fichier uploadé
-      const newLink = await addSocialLink(email, title, fileUrl, socialPseudo, socialDescription);
+      clearInterval(progressInterval);
+
       const modal = document.getElementById("social_links_form") as HTMLDialogElement;
       if (modal) modal.close();
 
-      if (newLink) {
-        // Rafraîchir les liens après l'ajout
+      if (successfulUploads > 0) {
         await fetchLinks();
       }
 
-      // Réinitialiser tout
       resetForm();
-      toast.success(`${title} ajouté avec succès 🥳`);
       
-      // Réinitialiser la progression après 1 seconde
+      if (selectedFiles.length > 1) {
+        toast.success(`${successfulUploads} fichiers uploadés avec succès! 🎉`);
+      } else {
+        const typeLabel = title === "Vidéo" ? "Vidéo" : title;
+        toast.success(`${typeLabel} ajouté(e) avec succès! 🎉`);
+      }
+      
       setTimeout(() => setUploadProgress(0), 1000);
 
     } catch (error) {
       console.error('Erreur upload:', error);
-      toast.error("Erreur lors de l'upload du fichier");
+      if (successfulUploads > 0) {
+        toast.error(`${successfulUploads} fichier(s) uploadé(s), ${selectedFiles.length - successfulUploads} échoué(s)`);
+      } else {
+        toast.error("Erreur lors de l'upload des fichiers");
+      }
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, email, title, socialPseudo, socialDescription, fetchLinks]);
+  }, [selectedFiles, email, title, socialPseudo, socialDescription, fetchLinks]);
 
   // Réinitialiser le formulaire
   const resetForm = useCallback(() => {
-    setLink(""); // Toujours une chaîne vide
+    setLink("");
     setSocialPseudo("");
     setSocialDescription("");
     setTitle(socialLinksDataMemo[0].name);
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setUseFileUpload(false);
+    setUploadMode('single');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -768,18 +1291,24 @@ export default function Home() {
 
   const handleAddLink = useCallback(async () => {
     // Validation pour l'upload de fichier
-    if (useFileUpload && selectedFile) {
-      await handleFileUpload();
+    if (useFileUpload && selectedFiles.length > 0) {
+      await handleFilesUpload();
       return;
     }
 
     // Validation pour les URLs normales
     if (!link || link.trim() === "") {
-      toast.error(`Veuillez ${title === "Image" ? "sélectionner une image" : title === "Document PDF" ? "sélectionner un PDF" : "entrer une URL"}`);
+      const errorMsg = {
+        "Image": "sélectionner une image",
+        "Document PDF": "sélectionner un PDF",
+        "Vidéo": "sélectionner une vidéo"
+      }[title] || "entrer une URL";
+      
+      toast.error(`Veuillez ${errorMsg}`);
       return;
     }
 
-    if (title !== "Image" && title !== "Document PDF" && !isValidURL(link)) {
+    if (title !== "Image" && title !== "Document PDF" && title !== "Vidéo" && !isValidURL(link)) {
       toast.error("Veuillez entrer une URL valide");
       return;
     }
@@ -790,7 +1319,7 @@ export default function Home() {
     }
 
     // Validation spécifique pour les réseaux sociaux
-    if (title !== "Image" && title !== "Document PDF") {
+    if (title !== "Image" && title !== "Document PDF" && title !== "Vidéo") {
       const selectedTitle = socialLinksDataMemo.find(l => l.name === title);
       if (selectedTitle?.root && selectedTitle.altRoot) {
         if (
@@ -806,46 +1335,25 @@ export default function Home() {
     }
 
     try {
-      const linkUrl = useFileUpload && selectedFile ? await uploadFile() : link;
-      
-      const newLink = await addSocialLink(email, title, linkUrl, socialPseudo, socialDescription);
+      const newLink = await addSocialLink(email, title, link, socialPseudo, socialDescription);
       const modal = document.getElementById("social_links_form") as HTMLDialogElement;
       if (modal) modal.close();
 
       if (newLink) {
-        // Rafraîchir les liens après l'ajout
         await fetchLinks();
       }
 
       resetForm();
-      toast.success("Lien ajouté avec succès 🥳 ");
+      toast.success("Lien ajouté avec succès! 🎉");
     } catch (error) {
       console.error(error);
       toast.error("Erreur lors de l'ajout du lien");
     }
-  }, [useFileUpload, selectedFile, handleFileUpload, link, title, socialPseudo, socialLinksDataMemo, email, fetchLinks, resetForm]);
-
-  // Fonction pour uploader le fichier et retourner l'URL
-  const uploadFile = useCallback(async (): Promise<string> => {
-    if (!selectedFile) throw new Error("Aucun fichier sélectionné");
-
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) throw new Error('Upload échoué');
-    const data = await response.json();
-    return data.url;
-  }, [selectedFile]);
+  }, [useFileUpload, selectedFiles, handleFilesUpload, link, title, socialPseudo, socialLinksDataMemo, email, fetchLinks, resetForm]);
 
   const handleRemoveLink = useCallback(async (linkId: string) => {
     try {
       await removeSocialLink(email, linkId);
-      // Rafraîchir les liens après la suppression
       await fetchLinks();
     } catch (error) {
       console.error(error);
@@ -895,9 +1403,19 @@ export default function Home() {
     [links]
   );
 
+  // Statistiques par type de fichier
+  const statsByType = useMemo(() => {
+    const stats = {
+      images: links.filter(link => isImageUrl(link.url)).length,
+      videos: links.filter(link => isVideoUrl(link.url)).length,
+      pdfs: links.filter(link => isPdfUrl(link.url)).length,
+    };
+    return stats;
+  }, [links]);
+
   // Handlers memoïsés
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSearchQuery(e.target.value || "");
   }, []);
 
   const handleClearSearch = useCallback(() => {
@@ -913,15 +1431,15 @@ export default function Home() {
   }, []);
 
   const handleSocialPseudoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSocialPseudo(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSocialPseudo(e.target.value || "");
   }, []);
 
   const handleSocialDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setSocialDescription(e.target.value || ""); // Toujours une chaîne vide si undefined
+    setSocialDescription(e.target.value || "");
   }, []);
 
   const handleLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLink(e.target.value || ""); // CORRECTION ICI : Toujours une chaîne vide si undefined
+    setLink(e.target.value || "");
   }, []);
 
   const handleCloseModal = useCallback(() => {
@@ -934,6 +1452,36 @@ export default function Home() {
     const modal = document.getElementById("social_links_form") as HTMLDialogElement;
     if (modal) modal.showModal();
   }, []);
+
+  // Supprimer un fichier spécifique
+  const handleRemoveFile = useCallback((index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Supprimer tous les fichiers
+  const handleRemoveAllFiles = useCallback(() => {
+    setSelectedFiles([]);
+  }, []);
+
+  // Changer le mode d'upload
+  const handleToggleUploadMode = useCallback(() => {
+    if (title !== "Image") return;
+    
+    const newMode = uploadMode === 'single' ? 'multiple' : 'single';
+    setUploadMode(newMode);
+    
+    if (newMode === 'single' && selectedFiles.length > 1) {
+      setSelectedFiles(prev => prev.slice(0, 1));
+    }
+  }, [title, uploadMode, selectedFiles]);
+
+  // Fonction pour déterminer le type de fichier
+  const getFileType = useCallback(() => {
+    if (title === "Image") return "image";
+    if (title === "Vidéo") return "video";
+    if (title === "Document PDF") return "pdf";
+    return null;
+  }, [title]);
 
   // Composants de rendu conditionnel
   const renderLoading = () => (
@@ -965,12 +1513,38 @@ export default function Home() {
 
   // Fonction pour afficher les liens
   const renderLinksList = () => {
-    // Séparer les images des autres liens
+    // Séparer les médias des autres liens
     const imageLinks = filteredLinks.filter(link => isImageUrl(link.url));
-    const otherLinks = filteredLinks.filter(link => !isImageUrl(link.url));
+    const videoLinks = filteredLinks.filter(link => isVideoUrl(link.url));
+    const otherLinks = filteredLinks.filter(link => 
+      !isImageUrl(link.url) && !isVideoUrl(link.url) && !isPdfUrl(link.url)
+    );
+    const pdfLinks = filteredLinks.filter(link => isPdfUrl(link.url));
 
     return (
       <div className="space-y-6 w-full">
+        {/* Section des vidéos */}
+        {videoLinks.length > 0 && (
+          <div className="space-y-4 w-full">
+            <div className="flex items-center gap-2">
+              <Video className="w-5 h-5 text-success" />
+              <h3 className="font-bold text-lg">Vidéos ({videoLinks.length})</h3>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
+              {videoLinks.map(link => (
+                <div key={link.id} className="w-full">
+                  <VideoCard
+                    link={link}
+                    onRemove={handleRemoveLink}
+                    showDescription={showDescription}
+                    fetchLinks={fetchLinks}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Section des images */}
         {imageLinks.length > 0 && (
           <div className="space-y-4 w-full">
@@ -993,10 +1567,33 @@ export default function Home() {
           </div>
         )}
 
+        {/* Section des PDFs */}
+        {pdfLinks.length > 0 && (
+          <div className="space-y-4 w-full">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-error" />
+              <h3 className="font-bold text-lg">PDFs ({pdfLinks.length})</h3>
+            </div>
+            <div className="flex flex-col gap-4 w-full">
+              {pdfLinks.map(link => (
+                <div key={link.id} className="w-full">
+                  <LinkComponent
+                    socialLink={link}
+                    onRemove={handleRemoveLink}
+                    readonly={false}
+                    fetchLinks={fetchLinks}
+                    showDescription={showDescription}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Section des autres liens */}
         {otherLinks.length > 0 && (
           <div className="space-y-4 w-full">
-            {(imageLinks.length > 0 || otherLinks.length > 0) && (
+            {(imageLinks.length > 0 || videoLinks.length > 0 || pdfLinks.length > 0 || otherLinks.length > 0) && (
               <div className="flex items-center gap-2">
                 <ExternalLink className="w-5 h-5 text-secondary" />
                 <h3 className="font-bold text-lg">Liens ({otherLinks.length})</h3>
@@ -1026,7 +1623,7 @@ export default function Home() {
       <Toaster position="top-right" reverseOrder={false} />
 
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-5rem)] w-full">
-        {/* Colonne gauche - Agrandie (35%) avec scroll indépendant */}
+        {/* Colonne gauche */}
         <div className="lg:w-2/5 lg:h-full lg:overflow-y-auto lg:pr-3 w-full">
           <div className="space-y-6 lg:pb-8 w-full">
             {pseudo && theme && (
@@ -1046,7 +1643,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Sélecteur de thème amélioré */}
+                {/* Sélecteur de thème */}
                 <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-4 w-full">
                     <Palette className="w-5 h-5 text-primary" />
@@ -1129,22 +1726,34 @@ export default function Home() {
                   {links.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-base-300 w-full">
                       <div className="flex items-center justify-between text-sm w-full">
+                        <span className="opacity-70">Images:</span>
+                        <span className="font-semibold">
+                          {statsByType.images}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm w-full">
+                        <span className="opacity-70">Vidéos:</span>
+                        <span className="font-semibold">
+                          {statsByType.videos}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm w-full">
+                        <span className="opacity-70">PDFs:</span>
+                        <span className="font-semibold">
+                          {statsByType.pdfs}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm w-full">
                         <span className="opacity-70">Liens avec description:</span>
                         <span className="font-semibold">
                           {linksWithDescriptionCount}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm mt-1 w-full">
-                        <span className="opacity-70">Images:</span>
-                        <span className="font-semibold">
-                          {links.filter(link => isImageUrl(link.url)).length}
                         </span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Visualisation améliorée */}
+                {/* Visualisation */}
                 <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm w-full">
                   <div className="flex items-center gap-3 mb-4 w-full">
                     <Sparkles className="w-5 h-5 text-primary" />
@@ -1200,10 +1809,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Colonne droite - Réduite (65%) avec scroll indépendant */}
+        {/* Colonne droite */}
         <div className="lg:w-3/5 lg:h-full lg:overflow-y-auto lg:pl-3 w-full">
           <div className="space-y-6 lg:pb-8 w-full">
-            {/* Barre de recherche et boutons optimisés */}
+            {/* Barre de recherche et boutons */}
             <div className="flex flex-col lg:flex-row gap-3 w-full">
               <div className="relative flex-grow w-full">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1265,7 +1874,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Modal optimisé avec scroll fixé */}
+            {/* Modal */}
             <dialog id="social_links_form" className="modal modal-middle">
               <div className="modal-box max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col w-full">
                 <div className="bg-amber-400 p-4 shrink-0 w-full">
@@ -1305,6 +1914,7 @@ export default function Home() {
                         </optgroup>
                         <optgroup label="Fichiers">
                           <option value="Image">Image</option>
+                          <option value="Vidéo">Vidéo</option>
                           <option value="Document PDF">Document PDF</option>
                         </optgroup>
                       </select>
@@ -1336,76 +1946,145 @@ export default function Home() {
                       value={socialDescription}
                       onChange={handleSocialDescriptionChange}
                     />
+                    
+                    {/* Prévisualisation des liens dans la description */}
+                    {socialDescription && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium mb-1">Aperçu des liens :</div>
+                        <div className="bg-base-200/50 p-2 rounded text-sm">
+                          <LinkifyText text={socialDescription} />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Section Upload ou URL */}
                   <div className="space-y-3 w-full">
                     <label className="label py-1 w-full">
                       <span className="label-text font-semibold">
-                        {title === "Image" ? "Image" : title === "Document PDF" ? "Document PDF" : "URL du lien"}
+                        {title === "Image" ? "Image" : 
+                         title === "Vidéo" ? "Vidéo" : 
+                         title === "Document PDF" ? "Document PDF" : "URL du lien"}
                       </span>
                     </label>
 
-                    {/* Mode fichier pour Image/PDF */}
-                    {(title === "Image" || title === "Document PDF") ? (
+                    {/* Mode fichier pour Image/PDF/Vidéo */}
+                    {(title === "Image" || title === "Vidéo" || title === "Document PDF") ? (
                       <div className="space-y-3 w-full">
-                        {/* Input fichier */}
+                        {/* Bouton pour sélectionner le mode d'upload (uniquement pour les images) */}
+                        {title === "Image" && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <button
+                              type="button"
+                              className={`btn btn-xs ${uploadMode === 'single' ? 'btn-primary' : 'btn-ghost'}`}
+                              onClick={() => {
+                                setUploadMode('single');
+                                if (selectedFiles.length > 1) {
+                                  setSelectedFiles(prev => prev.slice(0, 1));
+                                }
+                              }}
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              Une seule image
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-xs ${uploadMode === 'multiple' ? 'btn-primary' : 'btn-ghost'}`}
+                              onClick={() => setUploadMode('multiple')}
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              Plusieurs images
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Input fichier avec accept dynamique */}
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept={title === "Image" ? "image/*" : ".pdf"}
+                          accept={
+                            title === "Image" ? "image/*" :
+                            title === "Vidéo" ? "video/*" :
+                            ".pdf"
+                          }
                           onChange={handleFileChange}
                           className="file-input file-input-bordered file-input-sm w-full"
                           disabled={isUploading}
+                          multiple={title === "Image" && uploadMode === 'multiple'}
                         />
 
-                        {/* Aperçu du fichier sélectionné */}
-                        {selectedFile && (
-                          <div className="space-y-3 w-full">
-                            <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
-                              <div className="flex items-center justify-between mb-2 w-full">
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  {title === "Image" ? (
-                                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex-shrink-0">
-                                      <ImageIcon className="w-4 h-4 text-blue-500" />
+                        {/* Aperçu des fichiers sélectionnés */}
+                        {selectedFiles.length > 0 && (
+                          <div className="mt-3 space-y-3 w-full">
+                            {selectedFiles.length === 1 ? (
+                              // Aperçu pour un seul fichier
+                              <div className="bg-base-100 p-3 rounded-lg border border-base-300 w-full">
+                                <div className="flex items-center justify-between mb-2 w-full">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    {title === "Image" ? (
+                                      <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex-shrink-0">
+                                        <ImageIcon className="w-4 h-4 text-blue-500" />
+                                      </div>
+                                    ) : title === "Vidéo" ? (
+                                      <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30 flex-shrink-0">
+                                        <Video className="w-4 h-4 text-green-500" />
+                                      </div>
+                                    ) : (
+                                      <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 flex-shrink-0">
+                                        <FileText className="w-4 h-4 text-red-500" />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <span className="font-medium text-sm block truncate">
+                                        {selectedFiles[0].name}
+                                      </span>
+                                      <span className="text-xs opacity-70">
+                                        {(selectedFiles[0].size / 1024 / 1024).toFixed(2)} MB • {title}
+                                      </span>
                                     </div>
-                                  ) : (
-                                    <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 flex-shrink-0">
-                                      <FileText className="w-4 h-4 text-red-500" />
-                                    </div>
-                                  )}
-                                  <div className="min-w-0">
-                                    <span className="font-medium text-sm block truncate">
-                                      {selectedFile.name}
-                                    </span>
-                                    <span className="text-xs opacity-70">
-                                      {(selectedFile.size / 1024).toFixed(2)} KB • {title}
-                                    </span>
                                   </div>
+                                  <button
+                                    onClick={handleRemoveAllFiles}
+                                    className="btn btn-ghost btn-xs flex-shrink-0"
+                                    disabled={isUploading}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
                                 </div>
-                                <button
-                                  onClick={() => {
-                                    setSelectedFile(null);
-                                    if (fileInputRef.current) fileInputRef.current.value = '';
-                                  }}
-                                  className="btn btn-ghost btn-xs flex-shrink-0"
-                                  disabled={isUploading}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
 
-                              {/* Prévisualisation */}
-                              <div className="mt-3 w-full">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-medium">Prévisualisation :</span>
+                                {/* Prévisualisation pour un seul fichier */}
+                                <div className="mt-3 w-full">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-sm font-medium">Prévisualisation :</span>
+                                  </div>
+                                  <FilePreview 
+                                    file={selectedFiles[0]} 
+                                    type={getFileType() as 'image' | 'pdf' | 'video'} 
+                                  />
                                 </div>
-                                <FilePreview 
-                                  file={selectedFile} 
-                                  type={title === "Image" ? "image" : "pdf"} 
-                                />
                               </div>
-                            </div>
+                            ) : (
+                              // Aperçu pour plusieurs fichiers
+                              <MultipleFilesPreview 
+                                files={selectedFiles}
+                                onRemove={handleRemoveFile}
+                                fileType={title === "Image" ? "image" : "video"}
+                              />
+                            )}
+
+                            {/* Informations sur le multi-upload */}
+                            {selectedFiles.length > 1 && (
+                              <div className="bg-info/10 border border-info/20 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-info mb-1">
+                                  <Info className="w-4 h-4" />
+                                  <span className="font-medium text-sm">Upload multiple activé</span>
+                                </div>
+                                <p className="text-xs text-info/80">
+                                  {selectedFiles.length} fichiers seront uploadés en une seule fois.
+                                  La description sera appliquée à tous les fichiers.
+                                </p>
+                              </div>
+                            )}
 
                             {/* Barre de progression */}
                             {isUploading && (
@@ -1468,8 +2147,8 @@ export default function Home() {
                       disabled={
                         isUploading || 
                         !socialPseudo || 
-                        (title !== "Image" && title !== "Document PDF" && !link) ||
-                        ((title === "Image" || title === "Document PDF") && !selectedFile)
+                        (title !== "Image" && title !== "Vidéo" && title !== "Document PDF" && !link) ||
+                        ((title === "Image" || title === "Vidéo" || title === "Document PDF") && selectedFiles.length === 0)
                       }
                     >
                       {isUploading ? (
@@ -1480,7 +2159,9 @@ export default function Home() {
                       ) : (
                         <>
                           <Plus className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform" />
-                          <span className="text-sm">Ajouter le lien</span>
+                          <span className="text-sm">
+                            {selectedFiles.length > 1 ? `Ajouter ${selectedFiles.length} fichiers` : 'Ajouter le lien'}
+                          </span>
                         </>
                       )}
                     </button>

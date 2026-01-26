@@ -1,10 +1,10 @@
 "use client";
 import { SocialLink } from '@prisma/client'
-import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download, Heart } from 'lucide-react'
+import { ChartColumnIncreasing, Pencil, Trash, ExternalLink, Check, X, TrendingUp, FileText, Image, Upload, XCircle, Eye, EyeOff, Download, Heart, Video } from 'lucide-react'
 import Link from 'next/link'
 import React, { FC, useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import { SocialIcon } from 'react-social-icons'
-import { toggleSocialLinkActive, updateSocialdLink, incrementClickCount, toggleLike, getLikesCount, hasUserLiked } from '../server'
+import { toggleSocialLinkActive, updateSocialdLink, incrementClickCount } from '../server'
 import toast from 'react-hot-toast'
 import socialLinksData from '../socialLinksData'
 import { useUser } from '@clerk/nextjs'
@@ -135,6 +135,16 @@ const isValidUrl = (url: string): boolean => {
 
 const isImageFile = (type: string) => type.startsWith('image/')
 const isPDFFile = (type: string) => type === 'application/pdf'
+const isVideoFile = (type: string) => type.startsWith('video/')
+
+// Formats vidéo supportés
+const SUPPORTED_VIDEO_FORMATS = [
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-msvideo'
+]
 
 // Component pour convertir les URLs en liens cliquables (memoïsé)
 const LinkifyText = memo(({ text }: { text: string }) => {
@@ -165,28 +175,28 @@ const LinkifyText = memo(({ text }: { text: string }) => {
 
 LinkifyText.displayName = 'LinkifyText';
 
-// Preview de fichier (memoïsé)
+// Preview de fichier (memoïsé) - AJOUTÉE LA VIDÉO
 const FilePreview = memo(({ 
   file, 
   type,
   url 
 }: { 
   file?: File | null, 
-  type: 'image' | 'pdf',
+  type: 'image' | 'pdf' | 'video',
   url?: string 
 }) => {
-  const [imageUrl, setImageUrl] = useState<string>('');
+  const [previewUrl, setPreviewUrl] = useState<string>('');
 
   useEffect(() => {
-    if (type === 'image' && file) {
+    if ((type === 'image' || type === 'video') && file) {
       const url = URL.createObjectURL(file);
-      setImageUrl(url);
+      setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
   }, [file, type]);
 
   if (type === 'image') {
-    const src = imageUrl || url;
+    const src = previewUrl || url;
     return (
       <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-base-300">
         {src ? (
@@ -199,6 +209,24 @@ const FilePreview = memo(({
               e.currentTarget.style.display = 'none'
             }}
           />
+        ) : null}
+      </div>
+    );
+  }
+
+  if (type === 'video') {
+    const src = previewUrl || url;
+    return (
+      <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-base-300">
+        {src ? (
+          <video 
+            src={src}
+            className="w-full h-full object-cover"
+            controls
+            preload="metadata"
+          >
+            Votre navigateur ne supporte pas la lecture de vidéos.
+          </video>
         ) : null}
       </div>
     );
@@ -249,7 +277,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const [clicks, setClicks] = useState(socialLink.clicks)
   const [borderColorIndex, setBorderColorIndex] = useState(0)
   
-  // États pour les likes - MAINTENANT UTILISÉS DIRECTEMENT DEPUIS LES PROPS
+  // États pour les likes
   const isLiked = socialLink.isLikedByCurrentUser || false
   const likesCount = socialLink.likesCount || 0
   const [isLiking, setIsLiking] = useState(false)
@@ -308,15 +336,38 @@ const LinkComponent: FC<LinkComponentProps> = ({
     return formData.url.startsWith('/uploads/') || selectedFile
   }, [formData.url, selectedFile])
 
-  // Déterminer le type de fichier
+  // Déterminer le type de fichier - AJOUTÉE LA VIDÉO
   const fileType = useMemo(() => {
     if (selectedFile) {
-      return isImageFile(selectedFile.type) ? 'image' : 'pdf';
+      if (isImageFile(selectedFile.type)) return 'image';
+      if (isVideoFile(selectedFile.type)) return 'video';
+      if (isPDFFile(selectedFile.type)) return 'pdf';
     }
     if (formData.url.includes('.pdf')) return 'pdf';
     if (isImageFile(formData.url)) return 'image';
+    if (formData.url.match(/\.(mp4|webm|ogg|mov|avi)$/i)) return 'video';
     return null;
   }, [selectedFile, formData.url]);
+
+  // Fonction pour obtenir le titre du fichier basé sur le type
+  const getFileTypeTitle = useCallback((type: 'image' | 'pdf' | 'video' | null) => {
+    switch(type) {
+      case 'image': return 'Image';
+      case 'pdf': return 'Document PDF';
+      case 'video': return 'Vidéo';
+      default: return 'Fichier';
+    }
+  }, []);
+
+  // Fonction pour obtenir l'icône basée sur le type de fichier
+  const getFileIcon = useCallback((type: 'image' | 'pdf' | 'video' | null) => {
+    switch(type) {
+      case 'image': return <Image className="w-4 h-4 text-white" />;
+      case 'pdf': return <FileText className="w-4 h-4 text-white" />;
+      case 'video': return <Video className="w-4 h-4 text-white" />;
+      default: return null;
+    }
+  }, []);
 
   const handleToggleLike = useCallback(async () => {
     if (!currentUserId) {
@@ -360,10 +411,14 @@ const LinkComponent: FC<LinkComponentProps> = ({
   const handleFileUpload = useCallback(async () => {
     if (!selectedFile) return
 
-    // Limites de taille
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    // Limites de taille (50MB pour les vidéos, 10MB pour le reste)
+    let maxSize = 10 * 1024 * 1024; // 10MB par défaut
+    if (isVideoFile(selectedFile.type)) {
+      maxSize = 50 * 1024 * 1024; // 50MB pour les vidéos
+    }
+    
     if (selectedFile.size > maxSize) {
-      toast.error('Le fichier est trop volumineux (max 10MB)')
+      toast.error(`Le fichier est trop volumineux (max ${maxSize / 1024 / 1024}MB)`)
       return
     }
 
@@ -402,16 +457,18 @@ const LinkComponent: FC<LinkComponentProps> = ({
       
       // Mettre à jour l'URL du lien avec le fichier uploadé
       const newUrl = data.url
+      const title = getFileTypeTitle(fileType) || 'Fichier'
+      
       await updateSocialdLink(socialLink.id, {
         ...formData,
         url: newUrl,
-        title: isImageFile(selectedFile.type) ? 'Image' : 'Document PDF',
+        title,
       })
 
       setFormData(prev => ({ 
         ...prev, 
         url: newUrl,
-        title: isImageFile(selectedFile.type) ? 'Image' : 'Document PDF'
+        title
       }))
       setSelectedFile(null)
       setUseFileUpload(false)
@@ -433,7 +490,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
     } finally {
       setIsUploading(false)
     }
-  }, [selectedFile, socialLink.id, formData, fetchLinks])
+  }, [selectedFile, socialLink.id, formData, fetchLinks, fileType, getFileTypeTitle])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -442,9 +499,16 @@ const LinkComponent: FC<LinkComponentProps> = ({
     // Vérifier le type de fichier
     const isImage = isImageFile(file.type)
     const isPDF = isPDFFile(file.type)
+    const isVideo = isVideoFile(file.type)
 
-    if (!isImage && !isPDF) {
-      toast.error('Format de fichier non supporté. Utilisez une image ou un PDF.')
+    if (!isImage && !isPDF && !isVideo) {
+      toast.error('Format de fichier non supporté. Utilisez une image, un PDF ou une vidéo.')
+      return
+    }
+
+    // Vérifier les formats vidéo supportés
+    if (isVideo && !SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
+      toast.error('Format vidéo non supporté. Utilisez MP4, WebM, OGG, MOV ou AVI.')
       return
     }
 
@@ -667,13 +731,13 @@ const LinkComponent: FC<LinkComponentProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4 sm:gap-0">
         <div className="flex items-center gap-3">
           <div className={`relative ${COULEURS_BG[colorIndex]} p-2 rounded-2xl`}>
-            {isUploadedFile && isImageFile(socialLink.url) ? (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                <Image className="w-4 h-4 text-white" />
-              </div>
-            ) : isUploadedFile && isPDFFile(socialLink.url) ? (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
-                <FileText className="w-4 h-4 text-white" />
+            {isUploadedFile ? (
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                fileType === 'image' ? 'bg-gradient-to-r from-blue-500 to-purple-500' :
+                fileType === 'pdf' ? 'bg-gradient-to-r from-red-500 to-orange-500' :
+                'bg-gradient-to-r from-green-500 to-teal-500'
+              }`}>
+                {getFileIcon(fileType)}
               </div>
             ) : (
               <SocialIcon
@@ -687,7 +751,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
           <div className="flex flex-col">
             <span className={`font-bold text-sm ${COULEURS[colorIndex]} truncate`}>
               {isUploadedFile 
-                ? (isImageFile(socialLink.url) ? 'Image' : 'Document PDF') 
+                ? getFileTypeTitle(fileType)
                 : socialLink.title}
             </span>
             <span className="text-xs opacity-80 truncate">@{socialLink.pseudo}</span>
@@ -757,7 +821,8 @@ const LinkComponent: FC<LinkComponentProps> = ({
         >
           <span className="flex items-center justify-center gap-2">
             {isUploadedFile 
-              ? (isPDFFile(socialLink.url) ? 'Télécharger le PDF' : 'Voir l\'image') 
+              ? (fileType === 'pdf' ? 'Télécharger le PDF' : 
+                 fileType === 'video' ? 'Regarder la vidéo' : 'Voir le fichier') 
               : 'Visiter le lien '}
             <ExternalLink className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
           </span>
@@ -803,7 +868,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
     isActive, socialLink, colorIndex, getSocialIconStyle, socialColor, 
     clicks, borderColorIndex, isUploadedFile, fileType, currentUserId,
     readonly, isLiked, likesCount, isLiking, handleIncrementClick, 
-    handleToggleLike
+    handleToggleLike, getFileIcon, getFileTypeTitle
   ])
 
   const renderEditingView = useCallback(() => (
@@ -820,7 +885,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
               const value = e.target.value
               handleFormChange('title', value)
               // Si c'est un réseau social, passer en mode URL
-              if (value && value !== 'Image' && value !== 'Document PDF') {
+              if (value && !['Image', 'Document PDF', 'Vidéo'].includes(value)) {
                 setUseFileUpload(false)
                 setSelectedFile(null)
               }
@@ -830,6 +895,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
             <optgroup label="Fichiers">
               <option value="Image">Image</option>
               <option value="Document PDF">Document PDF</option>
+              <option value="Vidéo">Vidéo</option>
             </optgroup>
             <optgroup label="Réseaux sociaux">
               {socialLinksData.map(({ name }) => (
@@ -877,11 +943,11 @@ const LinkComponent: FC<LinkComponentProps> = ({
 
           {useFileUpload ? (
             <div className="space-y-4">
-              {/* Input fichier */}
+              {/* Input fichier - AJOUTÉ LES FORMATS VIDÉO */}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,image/*"
+                accept=".pdf,image/*,video/*"
                 onChange={handleFileChange}
                 className="file-input file-input-bordered w-full"
                 disabled={isUploading}
@@ -894,6 +960,8 @@ const LinkComponent: FC<LinkComponentProps> = ({
                     <div className="flex items-center gap-2">
                       {isImageFile(selectedFile.type) ? (
                         <Image className="w-6 h-6 text-blue-500" />
+                      ) : isVideoFile(selectedFile.type) ? (
+                        <Video className="w-6 h-6 text-green-500" />
                       ) : (
                         <FileText className="w-6 h-6 text-red-500" />
                       )}
@@ -902,7 +970,10 @@ const LinkComponent: FC<LinkComponentProps> = ({
                           {selectedFile.name}
                         </span>
                         <span className="text-xs opacity-70 block">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {isImageFile(selectedFile.type) ? 'Image' : 'PDF'}
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {
+                            isImageFile(selectedFile.type) ? 'Image' :
+                            isVideoFile(selectedFile.type) ? 'Vidéo' : 'PDF'
+                          }
                         </span>
                       </div>
                     </div>
@@ -914,13 +985,13 @@ const LinkComponent: FC<LinkComponentProps> = ({
                     </button>
                   </div>
 
-                  {/* Aperçu de l'image */}
-                  {selectedFile && isImageFile(selectedFile.type) && (
+                  {/* Aperçu de l'image ou vidéo */}
+                  {(selectedFile && (isImageFile(selectedFile.type) || isVideoFile(selectedFile.type))) && (
                     <div className="mt-3">
                       <p className="text-sm font-medium mb-2">Aperçu :</p>
                       <FilePreview 
                         file={selectedFile} 
-                        type="image" 
+                        type={isImageFile(selectedFile.type) ? 'image' : 'video'} 
                       />
                     </div>
                   )}
@@ -1024,13 +1095,13 @@ const LinkComponent: FC<LinkComponentProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex-shrink-0">
             <div className={`p-3 rounded-2xl ${COULEURS_BG[colorIndex]}`}>
-              {isUploadedFile && fileType === 'image' ? (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                  <Image className="w-4 h-4 text-white" />
-                </div>
-              ) : isUploadedFile && fileType === 'pdf' ? (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-white" />
+              {isUploadedFile && fileType ? (
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                  fileType === 'image' ? 'bg-gradient-to-r from-blue-500 to-purple-500' :
+                  fileType === 'pdf' ? 'bg-gradient-to-r from-red-500 to-orange-500' :
+                  'bg-gradient-to-r from-green-500 to-teal-500'
+                }`}>
+                  {getFileIcon(fileType)}
                 </div>
               ) : (
                 <SocialIcon
@@ -1044,7 +1115,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
           <div className="grow">
             <h3 className="font-bold truncate">
               {isUploadedFile 
-                ? (fileType === 'image' ? 'Image' : 'Document PDF') 
+                ? getFileTypeTitle(fileType)
                 : socialLink.title}
             </h3>
             <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -1058,7 +1129,7 @@ const LinkComponent: FC<LinkComponentProps> = ({
           </div>
         </div>
 
-        {/* Aperçu de l'image uploadée */}
+        {/* Aperçu de l'image ou vidéo uploadée */}
         {isUploadedFile && fileType && (
           <div className="mt-2">
             <FilePreview 
@@ -1133,7 +1204,8 @@ const LinkComponent: FC<LinkComponentProps> = ({
           >
             <ExternalLink className="w-4 h-4" />
             {isUploadedFile 
-              ? (fileType === 'pdf' ? 'Télécharger le PDF' : 'Voir l\'image') 
+              ? (fileType === 'pdf' ? 'Télécharger le PDF' : 
+                 fileType === 'video' ? 'Regarder la vidéo' : 'Voir le fichier') 
               : 'Visiter le lien🔥'}
           </button>
         )}
@@ -1146,7 +1218,8 @@ const LinkComponent: FC<LinkComponentProps> = ({
           <div className="tooltip bg-purple-50" data-tip={!currentUserId ? "Connectez-vous pour liker" : isLiked ? "🔥" : ""}>
             <button
               className="btn btn-ghost btn-sm gap-2"
-              
+              onClick={handleToggleLike}
+              disabled={!currentUserId || isLiking}
             >
               {isLiking ? (
                 <span className="loading loading-spinner loading-xs" />
@@ -1199,7 +1272,8 @@ const LinkComponent: FC<LinkComponentProps> = ({
     isUploadedFile, fileType, selectedFile, isActive, localShowDescription,
     currentUserId, isLiked, likesCount, isLiking, clicks, borderColorIndex,
     isDeleting, getSocialIconStyle, socialColor, handleToggleDescription,
-    handleToggleLike, handleIncrementClick, handleRemove
+    handleToggleLike, handleIncrementClick, handleRemove,
+    getFileIcon, getFileTypeTitle
   ])
 
   return (
