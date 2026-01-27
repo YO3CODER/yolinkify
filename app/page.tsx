@@ -7,7 +7,7 @@ import { useEffect, useState, useRef, useCallback, memo, useMemo } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { addSocialLink, getSocialLinksWithLikes, getUserInfo, removeSocialLink, updateUserTheme, incrementClickCount } from "./server";
 import { SocialLink } from "@prisma/client";
-import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2, Check, XCircle, FolderOpen, Info, Video } from "lucide-react";
+import { Copy, ExternalLink, Palette, Plus, Search, Eye, EyeOff, Upload, FileText, Image as ImageIcon, X, Download, File, Heart, Users, ArrowRight, Sparkles, Trash2, Check, XCircle, FolderOpen, Info, Video, FileIcon, LinkIcon, VideoIcon } from "lucide-react";
 import socialLinksData from "./socialLinksData";
 import EmptyState from "./components/EmptyState";
 import LinkComponent from "./components/LinkComponent";
@@ -1724,32 +1724,59 @@ export default function Home() {
                   </div>
                   
                   {links.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-base-300 w-full">
-                      <div className="flex items-center justify-between text-sm w-full">
-                        <span className="opacity-70">Images:</span>
-                        <span className="font-semibold">
-                          {statsByType.images}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm w-full">
-                        <span className="opacity-70">Vidéos:</span>
-                        <span className="font-semibold">
-                          {statsByType.videos}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm w-full">
-                        <span className="opacity-70">PDFs:</span>
-                        <span className="font-semibold">
-                          {statsByType.pdfs}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm w-full">
-                        <span className="opacity-70">Liens avec description:</span>
-                        <span className="font-semibold">
-                          {linksWithDescriptionCount}
-                        </span>
-                      </div>
-                    </div>
+                   <div className="mt-6 w-full">
+  <h3 className="text-sm font-medium text-base-content/70 mb-4">Statistiques par type</h3>
+  
+  <div className="grid grid-cols-2 gap-3">
+    <div className="bg-base-100 border border-base-200 rounded-lg p-4 hover:bg-base-200 transition-colors">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-base-content/50 mb-1">Images</div>
+          <div className="text-2xl font-bold">{statsByType.images}</div>
+        </div>
+        <div className="p-2 bg-primary/10 rounded-lg">
+          <ImageIcon className="w-5 h-5 text-primary" />
+        </div>
+      </div>
+    </div>
+    
+    <div className="bg-base-100 border border-base-200 rounded-lg p-4 hover:bg-base-200 transition-colors">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-base-content/50 mb-1">Vidéos</div>
+          <div className="text-2xl font-bold">{statsByType.videos}</div>
+        </div>
+        <div className="p-2 bg-secondary/10 rounded-lg">
+          <VideoIcon className="w-5 h-5 text-secondary" />
+        </div>
+      </div>
+    </div>
+    
+    <div className="bg-base-100 border border-base-200 rounded-lg p-4 hover:bg-base-200 transition-colors">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-base-content/50 mb-1">PDFs</div>
+          <div className="text-2xl font-bold">{statsByType.pdfs}</div>
+        </div>
+        <div className="p-2 bg-accent/10 rounded-lg">
+          <FileIcon className="w-5 h-5 text-accent" />
+        </div>
+      </div>
+    </div>
+    
+    <div className="bg-base-100 border border-base-200 rounded-lg p-4 hover:bg-base-200 transition-colors">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-base-content/50 mb-1">Liens décrits</div>
+          <div className="text-2xl font-bold">{linksWithDescriptionCount}</div>
+        </div>
+        <div className="p-2 bg-info/10 rounded-lg">
+          <LinkIcon className="w-5 h-5 text-info" />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
                   )}
                 </div>
 
