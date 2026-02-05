@@ -6,7 +6,7 @@ import LinkComponent from "@/app/components/LinkComponent";
 import Logo from "@/app/components/Logo";
 import { getSocialLinksWithLikes, getUserInfo, incrementClickCount } from "@/app/server";
 import { SocialLink } from "@prisma/client";
-import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink, Check, Video, Play } from "lucide-react";
+import { LogIn, UserPlus, Info, Search, Eye, EyeOff, Sparkles, Zap, Link as LinkIcon, Filter, Globe, Heart, Image as ImageIcon, ExternalLink, Check, Video, Play, Share2 } from "lucide-react";
 import React, { useEffect, useMemo, useState, useCallback, memo, useRef } from "react";
 import toast from "react-hot-toast";
 import Fuse from "fuse.js";
@@ -90,6 +90,98 @@ const isYouTubeUrl = (url: string): boolean => {
   return url.includes('youtube.com') || url.includes('youtu.be');
 };
 
+/* ------------------ SHARE DROPDOWN COMPONENT ------------------ */
+const ShareDropdown = memo(({ url, title, pseudo }: { 
+  url: string; 
+  title: string; 
+  pseudo: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const shareOptions = [
+    {
+      name: "Copier le lien",
+      icon: "📋",
+      action: async () => {
+        await navigator.clipboard.writeText(url);
+        toast.success('Lien copié !');
+      }
+    },
+    {
+      name: "Partager sur Twitter",
+      icon: "🐦",
+      action: () => {
+        const text = `${title} par @${pseudo}`;
+        const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+        window.open(twitterUrl, '_blank', 'noopener,noreferrer');
+      }
+    },
+    {
+      name: "Partager sur Facebook",
+      icon: "📘",
+      action: () => {
+        const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+        window.open(facebookUrl, '_blank', 'noopener,noreferrer');
+      }
+    },
+    {
+      name: "Partager sur LinkedIn",
+      icon: "💼",
+      action: () => {
+        const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
+        window.open(linkedinUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+  ];
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="btn btn-ghost btn-circle btn-xs lg:btn-sm hover:bg-primary/10 transition-colors"
+        aria-label="Options de partage"
+        title="Options de partage"
+      >
+        <Share2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 opacity-60 hover:opacity-100" />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-48 bg-base-100 border border-base-300 rounded-xl shadow-lg z-50 animate-fadeIn">
+          <div className="py-2">
+            {shareOptions.map((option, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  option.action();
+                  setIsOpen(false);
+                }}
+                className="w-full px-4 py-2 text-sm text-left hover:bg-base-200 flex items-center gap-3"
+              >
+                <span className="text-lg">{option.icon}</span>
+                <span>{option.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+ShareDropdown.displayName = 'ShareDropdown';
+
 /* ------------------ VIDEO CARD COMPONENT ------------------ */
 const VideoCard = memo(({ 
   link, 
@@ -137,6 +229,35 @@ const VideoCard = memo(({
   const handleToggleDescription = useCallback(() => {
     setShowDescription(prev => !prev)
   }, [])
+
+  const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const shareData = {
+      title: link.title || 'Vidéo intéressante',
+      text: `${link.title} - Regardez cette vidéo partagée par @${link.pseudo}`,
+      url: link.url,
+    };
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(link.url);
+        toast.success('Lien de la vidéo copié !');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        try {
+          await navigator.clipboard.writeText(link.url);
+          toast.success('Lien de la vidéo copié !');
+        } catch {
+          toast.error('Impossible de partager la vidéo');
+        }
+      }
+    }
+  }, [link.title, link.url, link.pseudo])
 
   const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -222,6 +343,9 @@ const VideoCard = memo(({
               <span className="text-xs mt-1">{localLikesCount}</span>
             )}
           </button>
+          
+          {/* Bouton de partage */}
+          <ShareDropdown url={link.url} title={link.title} pseudo={link.pseudo} />
           
           {/* Bouton pour afficher/masquer la description */}
           {link.description && (
@@ -328,6 +452,14 @@ const VideoCard = memo(({
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="badge badge-success badge-sm">Vidéo</span>
           <button
+            onClick={handleShare}
+            className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+            title="Partager cette vidéo"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="text-xs hidden sm:inline">Partager</span>
+          </button>
+          <button
             onClick={handleIncrementClick}
             disabled={isLoadingClick}
             className="btn btn-ghost btn-xs gap-1 hover:text-primary"
@@ -414,6 +546,35 @@ const ImageCard = memo(({
     setShowDescription(prev => !prev)
   }, [])
 
+  const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const shareData = {
+      title: link.title || 'Image intéressante',
+      text: `${link.title} - Regardez cette image partagée par @${link.pseudo}`,
+      url: link.url,
+    };
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(link.url);
+        toast.success('Lien de l\'image copié !');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        try {
+          await navigator.clipboard.writeText(link.url);
+          toast.success('Lien de l\'image copié !');
+        } catch {
+          toast.error('Impossible de partager l\'image');
+        }
+      }
+    }
+  }, [link.title, link.url, link.pseudo])
+
   const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -498,6 +659,9 @@ const ImageCard = memo(({
               <span className="text-xs mt-1">{localLikesCount}</span>
             )}
           </button>
+          
+          {/* Bouton de partage */}
+          <ShareDropdown url={link.url} title={link.title} pseudo={link.pseudo} />
           
           {/* Bouton pour afficher/masquer la description */}
           {link.description && (
@@ -592,6 +756,14 @@ const ImageCard = memo(({
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="badge badge-info badge-sm">Image</span>
+          <button
+            onClick={handleShare}
+            className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+            title="Partager cette image"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="text-xs hidden sm:inline">Partager</span>
+          </button>
           <button
             onClick={handleIncrementClick}
             disabled={isLoadingClick}
@@ -753,6 +925,39 @@ const LinkWithDescription = memo(({
     setShowDescription(prev => !prev)
   }, [])
 
+  const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const shareData = {
+      title: link.title || 'Lien intéressant',
+      text: `${link.title} - Découvrez ce lien partagé par @${link.pseudo}`,
+      url: link.url,
+    };
+    
+    try {
+      // Vérifier si l'API Web Share est disponible (mobile principalement)
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback pour desktop : copier le lien dans le presse-papier
+        await navigator.clipboard.writeText(link.url);
+        toast.success('Lien copié dans le presse-papier !');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        // Si l'utilisateur annule le partage, pas d'erreur
+        // Sinon, essayer le fallback
+        try {
+          await navigator.clipboard.writeText(link.url);
+          toast.success('Lien copié dans le presse-papier !');
+        } catch (clipboardError) {
+          toast.error('Impossible de partager le lien');
+        }
+      }
+    }
+  }, [link.title, link.url, link.pseudo])
+
   const isYouTube = isYouTubeUrl(link.url)
   const isImage = isImageUrl(link.url)
   const isVideo = isVideoUrl(link.url)
@@ -816,6 +1021,9 @@ const LinkWithDescription = memo(({
               )}
             </button>
             
+            {/* Bouton de partage */}
+            <ShareDropdown url={link.url} title={link.title} pseudo={link.pseudo} />
+            
             {/* Bouton pour afficher/masquer la description */}
             {link.description && (
               <button
@@ -847,6 +1055,68 @@ const LinkWithDescription = memo(({
             readonly 
             showDescription={false}
           />
+        </div>
+
+        {/* Footer avec actions */}
+        <div className="flex justify-between items-center mt-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLike}
+              disabled={isLiking}
+              className={`btn btn-xs gap-2 ${localIsLiked ? 'btn-error' : 'btn-ghost hover:btn-error'}`}
+              title={localIsLiked ? "Retirer le like" : "Ajouter un like"}
+            >
+              {isLiking ? (
+                <span className="loading loading-spinner loading-xs"></span>
+              ) : (
+                <>
+                  <Heart className={`w-4 h-4 ${localIsLiked ? 'fill-current' : ''}`} />
+                  <span className="text-sm font-medium">{localLikesCount}</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isPdf ? (
+              <span className="badge badge-error badge-sm">PDF</span>
+            ) : isYouTube ? (
+              <span className="badge badge-error badge-sm">YouTube</span>
+            ) : (
+              <span className="badge badge-secondary badge-sm">Lien</span>
+            )}
+            <button
+              onClick={handleShare}
+              className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+              title="Partager ce lien"
+            >
+              <Share2 className="w-4 h-4" />
+              <span className="text-xs hidden sm:inline">Partager</span>
+            </button>
+            <button
+              onClick={async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                // Ouvrir le lien
+                window.open(link.url, '_blank', 'noopener,noreferrer');
+                
+                // Incrémenter le compteur de clics
+                try {
+                  await incrementClickCount(link.id);
+                  setClicks(prev => prev + 1);
+                } catch (error) {
+                  console.error('Erreur:', error);
+                  setClicks(prev => prev + 1);
+                }
+              }}
+              className="btn btn-ghost btn-xs gap-1 hover:text-primary"
+              title="Visiter le lien"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span className="text-xs hidden sm:inline">Ouvrir</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
