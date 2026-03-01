@@ -533,17 +533,21 @@ const useDebounce = <T,>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
-// Composant VideoCard pour afficher les vidéos directement - NOUVEAU COMPOSANT
+// Composant VideoCard pour afficher les vidéos directement - AVEC SAUVEGARDE DE POSITION
 const VideoCard = memo(({ 
   link, 
   onRemove, 
   showDescription,
-  fetchLinks 
+  fetchLinks,
+  savedPosition,
+  onPositionChange
 }: { 
   link: SocialLinkWithLikes;
   onRemove: (linkId: string) => Promise<void>;
   showDescription: boolean;
   fetchLinks: () => Promise<void>;
+  savedPosition?: number;
+  onPositionChange?: (linkId: string, position: number) => void;
 }) => {
   const [isRemoving, setIsRemoving] = useState(false);
   const [isLoadingLike, setIsLoadingLike] = useState(false);
@@ -552,6 +556,55 @@ const VideoCard = memo(({
   const [clicks, setClicks] = useState(link.clicks || 0);
   const [isLoadingClick, setIsLoadingClick] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSaveTime = useRef<number>(0);
+
+  // Restaurer la position sauvegardée
+  useEffect(() => {
+    if (videoRef.current && savedPosition && savedPosition > 0) {
+      videoRef.current.currentTime = savedPosition;
+    }
+  }, [savedPosition]);
+
+  // Sauvegarder la position quand la vidéo est mise en pause
+  const handlePause = useCallback(() => {
+    if (videoRef.current && onPositionChange) {
+      const currentTime = videoRef.current.currentTime;
+      onPositionChange(link.id, currentTime);
+    }
+  }, [link.id, onPositionChange]);
+
+  // Sauvegarder la position périodiquement pendant la lecture
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current && onPositionChange) {
+      const currentTime = videoRef.current.currentTime;
+      const now = Date.now();
+      
+      // Sauvegarder toutes les 5 secondes
+      if (now - lastSaveTime.current >= 5000) {
+        onPositionChange(link.id, currentTime);
+        lastSaveTime.current = now;
+      }
+    }
+  }, [link.id, onPositionChange]);
+
+  // Sauvegarder la position avant de quitter la page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (videoRef.current && onPositionChange) {
+        onPositionChange(link.id, videoRef.current.currentTime);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Sauvegarder aussi quand le composant est démonté
+      if (videoRef.current && onPositionChange) {
+        onPositionChange(link.id, videoRef.current.currentTime);
+      }
+    };
+  }, [link.id, onPositionChange]);
 
   const handleRemove = async () => {
     setIsRemoving(true);
@@ -676,16 +729,18 @@ const VideoCard = memo(({
           </div>
         </div>
 
-        {/* Player vidéo */}
+        {/* Player vidéo avec gestion de position */}
         <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
           <div className="aspect-video bg-black">
             <video 
+              ref={videoRef}
               src={link.url} 
               className="w-full h-full object-contain"
               controls
               preload="metadata"
               onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
+              onPause={handlePause}
+              onTimeUpdate={handleTimeUpdate}
               onError={(e) => {
                 const target = e.target as HTMLVideoElement;
                 target.style.display = 'none';
@@ -780,7 +835,7 @@ const VideoCard = memo(({
 
 VideoCard.displayName = 'VideoCard';
 
-// ImageCard existant (gardé pour référence mais fusionné dans la logique)
+// ImageCard existant
 const ImageCard = memo(({ 
   link, 
   onRemove, 
@@ -1039,6 +1094,9 @@ export default function Home() {
   const [showDescription, setShowDescription] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   
+  // État pour stocker les positions des vidéos
+  const [videoPositions, setVideoPositions] = useState<Record<string, number>>({});
+  
   // États pour l'upload de fichier
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -1046,6 +1104,27 @@ export default function Home() {
   const [useFileUpload, setUseFileUpload] = useState(false);
   const [uploadMode, setUploadMode] = useState<'single' | 'multiple'>('single');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Charger les positions sauvegardées depuis localStorage
+  useEffect(() => {
+    try {
+      const savedPositions = localStorage.getItem('videoPositions');
+      if (savedPositions) {
+        setVideoPositions(JSON.parse(savedPositions));
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des positions:', error);
+    }
+  }, []);
+
+  // Sauvegarder les positions dans localStorage quand elles changent
+  useEffect(() => {
+    try {
+      localStorage.setItem('videoPositions', JSON.stringify(videoPositions));
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde des positions:', error);
+    }
+  }, [videoPositions]);
 
   // Debounce pour la recherche
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -1061,6 +1140,14 @@ export default function Home() {
 
   // Données des liens sociaux memoïsées
   const socialLinksDataMemo = useMemo(() => socialLinksData, []);
+
+  // Fonction pour sauvegarder la position d'une vidéo
+  const handleVideoPositionChange = useCallback((linkId: string, position: number) => {
+    setVideoPositions(prev => ({
+      ...prev,
+      [linkId]: position
+    }));
+  }, []);
 
   // Fonction pour rafraîchir les liens
   const fetchLinks = useCallback(async () => {
@@ -1354,6 +1441,14 @@ export default function Home() {
   const handleRemoveLink = useCallback(async (linkId: string) => {
     try {
       await removeSocialLink(email, linkId);
+      
+      // Nettoyer la position de la vidéo supprimée
+      setVideoPositions(prev => {
+        const newPositions = { ...prev };
+        delete newPositions[linkId];
+        return newPositions;
+      });
+      
       await fetchLinks();
     } catch (error) {
       console.error(error);
@@ -1538,6 +1633,8 @@ export default function Home() {
                     onRemove={handleRemoveLink}
                     showDescription={showDescription}
                     fetchLinks={fetchLinks}
+                    savedPosition={videoPositions[link.id]}
+                    onPositionChange={handleVideoPositionChange}
                   />
                 </div>
               ))}
