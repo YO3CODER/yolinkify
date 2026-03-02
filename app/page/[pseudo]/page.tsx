@@ -182,13 +182,17 @@ const ShareDropdown = memo(({ url, title, pseudo }: {
 
 ShareDropdown.displayName = 'ShareDropdown';
 
-/* ------------------ VIDEO CARD COMPONENT ------------------ */
+/* ------------------ VIDEO CARD COMPONENT AVEC SAUVEGARDE DE POSITION ------------------ */
 const VideoCard = memo(({ 
   link, 
-  onLikeToggle 
+  onLikeToggle,
+  savedPosition,
+  onPositionChange
 }: { 
   link: SocialLinkWithLikes;
   onLikeToggle?: (linkId: string) => Promise<void>;
+  savedPosition?: number;
+  onPositionChange?: (linkId: string, position: number) => void;
 }) => {
   const [showDescription, setShowDescription] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
@@ -197,6 +201,8 @@ const VideoCard = memo(({
   const [isLoadingClick, setIsLoadingClick] = useState(false)
   const [clicks, setClicks] = useState(link.clicks || 0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const lastSaveTime = useRef<number>(0)
 
   // Synchroniser avec les props
   useEffect(() => {
@@ -204,6 +210,53 @@ const VideoCard = memo(({
     setLocalLikesCount(link.likesCount || 0)
     setClicks(link.clicks || 0)
   }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
+
+  // Restaurer la position sauvegardée
+  useEffect(() => {
+    if (videoRef.current && savedPosition && savedPosition > 0) {
+      videoRef.current.currentTime = savedPosition;
+    }
+  }, [savedPosition]);
+
+  // Sauvegarder la position quand la vidéo est mise en pause
+  const handlePause = useCallback(() => {
+    if (videoRef.current && onPositionChange) {
+      const currentTime = videoRef.current.currentTime;
+      onPositionChange(link.id, currentTime);
+    }
+  }, [link.id, onPositionChange]);
+
+  // Sauvegarder la position périodiquement pendant la lecture
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current && onPositionChange) {
+      const currentTime = videoRef.current.currentTime;
+      const now = Date.now();
+      
+      // Sauvegarder toutes les 5 secondes
+      if (now - lastSaveTime.current >= 5000) {
+        onPositionChange(link.id, currentTime);
+        lastSaveTime.current = now;
+      }
+    }
+  }, [link.id, onPositionChange]);
+
+  // Sauvegarder la position avant de quitter la page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (videoRef.current && onPositionChange) {
+        onPositionChange(link.id, videoRef.current.currentTime);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Sauvegarder aussi quand le composant est démonté
+      if (videoRef.current && onPositionChange) {
+        onPositionChange(link.id, videoRef.current.currentTime);
+      }
+    };
+  }, [link.id, onPositionChange]);
 
   const handleLike = useCallback(async () => {
     if (!onLikeToggle || isLiking) return;
@@ -371,16 +424,18 @@ const VideoCard = memo(({
         </div>
       )}
 
-      {/* Player vidéo */}
+      {/* Player vidéo avec gestion de position */}
       <div className="relative rounded-lg overflow-hidden border border-base-300 mb-3 w-full">
         <div className="aspect-video bg-black">
           <video 
+            ref={videoRef}
             src={link.url} 
             className="w-full h-full object-contain"
             controls
             preload="metadata"
             onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
+            onPause={handlePause}
+            onTimeUpdate={handleTimeUpdate}
             onError={(e) => {
               const target = e.target as HTMLVideoElement;
               target.style.display = 'none';
@@ -856,10 +911,14 @@ YoutubePreview.displayName = 'YoutubePreview'
 /* ------------------ LIEN AVEC DESCRIPTION ET LIKES ------------------ */
 const LinkWithDescription = memo(({ 
   link, 
-  onLikeToggle 
+  onLikeToggle,
+  savedPosition,
+  onPositionChange
 }: { 
   link: SocialLinkWithLikes;
   onLikeToggle?: (linkId: string) => Promise<void>;
+  savedPosition?: number;
+  onPositionChange?: (linkId: string, position: number) => void;
 }) => {
   const [showDescription, setShowDescription] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
@@ -965,7 +1024,7 @@ const LinkWithDescription = memo(({
 
   // Si c'est une vidéo, utiliser VideoCard
   if (isVideo) {
-    return <VideoCard link={link} onLikeToggle={onLikeToggle} />
+    return <VideoCard link={link} onLikeToggle={onLikeToggle} savedPosition={savedPosition} onPositionChange={onPositionChange} />
   }
 
   // Si c'est une image, utiliser ImageCard
@@ -1197,12 +1256,48 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   const [showOnlyWithDescription, setShowOnlyWithDescription] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all')
   
+  // État pour les positions des vidéos
+  const [videoPositions, setVideoPositions] = useState<Record<string, number>>({})
+  
   // État pour éviter l'hydratation
   const [mounted, setMounted] = useState(false)
   
   // Debounce pour la recherche
   const debouncedSearch = useDebounce(search, 300)
   const isFirstRender = useRef(true)
+
+  // Charger les positions sauvegardées depuis localStorage
+  useEffect(() => {
+    if (mounted) {
+      try {
+        const savedPositions = localStorage.getItem('videoPositions');
+        if (savedPositions) {
+          setVideoPositions(JSON.parse(savedPositions));
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des positions:', error);
+      }
+    }
+  }, [mounted]);
+
+  // Sauvegarder les positions dans localStorage quand elles changent
+  useEffect(() => {
+    if (mounted && Object.keys(videoPositions).length > 0) {
+      try {
+        localStorage.setItem('videoPositions', JSON.stringify(videoPositions));
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde des positions:', error);
+      }
+    }
+  }, [videoPositions, mounted]);
+
+  // Fonction pour sauvegarder la position d'une vidéo
+  const handleVideoPositionChange = useCallback((linkId: string, position: number) => {
+    setVideoPositions(prev => ({
+      ...prev,
+      [linkId]: position
+    }));
+  }, []);
 
   useEffect(() => {
     setMounted(true)
@@ -1516,6 +1611,8 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   key={link.id} 
                   link={link}
                   onLikeToggle={handleLikeToggle}
+                  savedPosition={videoPositions[link.id]}
+                  onPositionChange={handleVideoPositionChange}
                 />
               ))}
             </div>
@@ -1556,6 +1653,8 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   key={link.id} 
                   link={link}
                   onLikeToggle={handleLikeToggle}
+                  savedPosition={videoPositions[link.id]}
+                  onPositionChange={handleVideoPositionChange}
                 />
               ))}
             </div>
@@ -1576,6 +1675,8 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 key={link.id} 
                 link={link}
                 onLikeToggle={handleLikeToggle}
+                savedPosition={videoPositions[link.id]}
+                onPositionChange={handleVideoPositionChange}
               />
             ))}
           </div>
