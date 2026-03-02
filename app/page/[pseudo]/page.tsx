@@ -94,7 +94,7 @@ const isYouTubeUrl = (url: string): boolean => {
 // Hook pour gérer les positions des vidéos avec debounce
 const useVideoPositions = () => {
   const [videoPositions, setVideoPositions] = useState<Record<string, number>>({});
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mounted, setMounted] = useState(false);
 
   // Charger les positions sauvegardées
