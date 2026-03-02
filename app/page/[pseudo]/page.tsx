@@ -90,6 +90,111 @@ const isYouTubeUrl = (url: string): boolean => {
   return url.includes('youtube.com') || url.includes('youtu.be');
 };
 
+/* ------------------ HOOKS PERSONNALISÉS ------------------ */
+// Hook pour gérer les positions des vidéos avec debounce
+const useVideoPositions = () => {
+  const [videoPositions, setVideoPositions] = useState<Record<string, number>>({});
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const [mounted, setMounted] = useState(false);
+
+  // Charger les positions sauvegardées
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const savedPositions = localStorage.getItem('videoPositions');
+      if (savedPositions) {
+        setVideoPositions(JSON.parse(savedPositions));
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des positions:', error);
+    }
+  }, []);
+
+  // Sauvegarder avec debounce
+  const savePositions = useCallback((positions: Record<string, number>) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem('videoPositions', JSON.stringify(positions));
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde des positions:', error);
+      }
+    }, 1000);
+  }, []);
+
+  // Mettre à jour une position
+  const updatePosition = useCallback((linkId: string, position: number) => {
+    setVideoPositions(prev => {
+      const newPositions = { ...prev, [linkId]: position };
+      savePositions(newPositions);
+      return newPositions;
+    });
+  }, [savePositions]);
+
+  return { videoPositions, updatePosition, mounted };
+};
+
+// Hook pour la recherche avec Fuse
+const useSearch = (links: SocialLinkWithLikes[], searchTerm: string) => {
+  const fuse = useMemo(() => {
+    if (links.length === 0) return null;
+    
+    return new Fuse(links, {
+      keys: ["title", "url", "description", "pseudo"],
+      threshold: 0.3,
+      includeScore: true,
+      minMatchCharLength: 2,
+    });
+  }, [links]);
+
+  return useMemo(() => {
+    if (!searchTerm.trim() || !fuse) return links;
+    return fuse.search(searchTerm).map(result => result.item);
+  }, [searchTerm, fuse, links]);
+};
+
+// Hook pour le tri et filtrage
+const useFilteredAndSortedLinks = (
+  links: SocialLinkWithLikes[],
+  searchResults: SocialLinkWithLikes[],
+  showOnlyWithDescription: boolean,
+  activeFilter: 'all' | 'active',
+  sortBy: 'clicks' | 'title' | 'recent'
+) => {
+  return useMemo(() => {
+    let result = searchResults;
+    
+    // Filtre par description
+    if (showOnlyWithDescription) {
+      result = result.filter(link => link.description && link.description.trim() !== "");
+    }
+    
+    // Filtre par statut actif
+    if (activeFilter === 'active') {
+      result = result.filter(link => link.active);
+    }
+    
+    // Tri
+    switch (sortBy) {
+      case 'clicks':
+        result.sort((a, b) => b.clicks - a.clicks);
+        break;
+      case 'title':
+        result.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case 'recent':
+      default:
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        break;
+    }
+    
+    return result;
+  }, [searchResults, showOnlyWithDescription, activeFilter, sortBy]);
+};
+
 /* ------------------ SHARE DROPDOWN COMPONENT ------------------ */
 const ShareDropdown = memo(({ url, title, pseudo }: { 
   url: string; 
@@ -99,7 +204,7 @@ const ShareDropdown = memo(({ url, title, pseudo }: {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const shareOptions = [
+  const shareOptions = useMemo(() => [
     {
       name: "Copier le lien",
       icon: "📋",
@@ -133,7 +238,7 @@ const ShareDropdown = memo(({ url, title, pseudo }: {
         window.open(linkedinUrl, '_blank', 'noopener,noreferrer');
       }
     }
-  ];
+  ], [url, title, pseudo]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -182,7 +287,7 @@ const ShareDropdown = memo(({ url, title, pseudo }: {
 
 ShareDropdown.displayName = 'ShareDropdown';
 
-/* ------------------ VIDEO CARD COMPONENT AVEC SAUVEGARDE DE POSITION ------------------ */
+/* ------------------ VIDEO CARD COMPONENT ------------------ */
 const VideoCard = memo(({ 
   link, 
   onLikeToggle,
@@ -194,22 +299,22 @@ const VideoCard = memo(({
   savedPosition?: number;
   onPositionChange?: (linkId: string, position: number) => void;
 }) => {
-  const [showDescription, setShowDescription] = useState(false)
-  const [isLiking, setIsLiking] = useState(false)
-  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
-  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
-  const [isLoadingClick, setIsLoadingClick] = useState(false)
-  const [clicks, setClicks] = useState(link.clicks || 0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const lastSaveTime = useRef<number>(0)
+  const [showDescription, setShowDescription] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false);
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0);
+  const [isLoadingClick, setIsLoadingClick] = useState(false);
+  const [clicks, setClicks] = useState(link.clicks || 0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSaveTime = useRef<number>(0);
 
   // Synchroniser avec les props
   useEffect(() => {
-    setLocalIsLiked(link.isLikedByCurrentUser || false)
-    setLocalLikesCount(link.likesCount || 0)
-    setClicks(link.clicks || 0)
-  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
+    setLocalIsLiked(link.isLikedByCurrentUser || false);
+    setLocalLikesCount(link.likesCount || 0);
+    setClicks(link.clicks || 0);
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks]);
 
   // Restaurer la position sauvegardée
   useEffect(() => {
@@ -277,11 +382,11 @@ const VideoCard = memo(({
     } finally {
       setIsLiking(false);
     }
-  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount])
+  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount]);
 
   const handleToggleDescription = useCallback(() => {
-    setShowDescription(prev => !prev)
-  }, [])
+    setShowDescription(prev => !prev);
+  }, []);
 
   const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -310,7 +415,7 @@ const VideoCard = memo(({
         }
       }
     }
-  }, [link.title, link.url, link.pseudo])
+  }, [link.title, link.url, link.pseudo]);
 
   const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -321,21 +426,14 @@ const VideoCard = memo(({
     setIsLoadingClick(true);
     
     try {
-      // 1. Ouvrir le lien immédiatement pour une meilleure UX
       window.open(link.url, '_blank', 'noopener,noreferrer');
       
-      // 2. Incrémenter le compteur via l'API server action
       try {
         await incrementClickCount(link.id);
-        
-        // Mettre à jour l'état local immédiatement
         setClicks(prev => prev + 1);
-        
-        console.log('Click incrementé avec succès');
       } catch (apiError) {
         console.error('Erreur server action, tentative avec fetch:', apiError);
         
-        // Fallback: essayer avec fetch si l'action serveur échoue
         const response = await fetch('/api/clicks', {
           method: 'POST',
           headers: {
@@ -348,19 +446,16 @@ const VideoCard = memo(({
           const data = await response.json();
           setClicks(data.clicks || clicks + 1);
         } else {
-          // Fallback: incrémenter localement
           setClicks(prev => prev + 1);
         }
       }
-      
     } catch (error) {
       console.error('Erreur:', error);
-      // En cas d'erreur, incrémenter localement quand même
       setClicks(prev => prev + 1);
     } finally {
       setIsLoadingClick(false);
     }
-  }, [link.id, link.url, isLoadingClick, clicks])
+  }, [link.id, link.url, isLoadingClick, clicks]);
 
   return (
     <div className="bg-gradient-to-br from-base-100 to-base-200/50 p-4 lg:p-5 rounded-xl border border-base-300 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
@@ -549,10 +644,10 @@ const VideoCard = memo(({
         )}
       </div>
     </div>
-  )
-})
+  );
+});
 
-VideoCard.displayName = 'VideoCard'
+VideoCard.displayName = 'VideoCard';
 
 /* ------------------ IMAGE CARD COMPONENT ------------------ */
 const ImageCard = memo(({ 
@@ -562,19 +657,19 @@ const ImageCard = memo(({
   link: SocialLinkWithLikes;
   onLikeToggle?: (linkId: string) => Promise<void>;
 }) => {
-  const [showDescription, setShowDescription] = useState(false)
-  const [isLiking, setIsLiking] = useState(false)
-  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
-  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
-  const [isLoadingClick, setIsLoadingClick] = useState(false)
-  const [clicks, setClicks] = useState(link.clicks || 0)
+  const [showDescription, setShowDescription] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false);
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0);
+  const [isLoadingClick, setIsLoadingClick] = useState(false);
+  const [clicks, setClicks] = useState(link.clicks || 0);
 
   // Synchroniser avec les props
   useEffect(() => {
-    setLocalIsLiked(link.isLikedByCurrentUser || false)
-    setLocalLikesCount(link.likesCount || 0)
-    setClicks(link.clicks || 0)
-  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
+    setLocalIsLiked(link.isLikedByCurrentUser || false);
+    setLocalLikesCount(link.likesCount || 0);
+    setClicks(link.clicks || 0);
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks]);
 
   const handleLike = useCallback(async () => {
     if (!onLikeToggle || isLiking) return;
@@ -595,11 +690,11 @@ const ImageCard = memo(({
     } finally {
       setIsLiking(false);
     }
-  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount])
+  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount]);
 
   const handleToggleDescription = useCallback(() => {
-    setShowDescription(prev => !prev)
-  }, [])
+    setShowDescription(prev => !prev);
+  }, []);
 
   const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -628,7 +723,7 @@ const ImageCard = memo(({
         }
       }
     }
-  }, [link.title, link.url, link.pseudo])
+  }, [link.title, link.url, link.pseudo]);
 
   const handleIncrementClick = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -639,21 +734,14 @@ const ImageCard = memo(({
     setIsLoadingClick(true);
     
     try {
-      // 1. Ouvrir le lien immédiatement pour une meilleure UX
       window.open(link.url, '_blank', 'noopener,noreferrer');
       
-      // 2. Incrémenter le compteur via l'API server action
       try {
         await incrementClickCount(link.id);
-        
-        // Mettre à jour l'état local immédiatement
         setClicks(prev => prev + 1);
-        
-        console.log('Click incrementé avec succès');
       } catch (apiError) {
         console.error('Erreur server action, tentative avec fetch:', apiError);
         
-        // Fallback: essayer avec fetch si l'action serveur échoue
         const response = await fetch('/api/clicks', {
           method: 'POST',
           headers: {
@@ -666,19 +754,16 @@ const ImageCard = memo(({
           const data = await response.json();
           setClicks(data.clicks || clicks + 1);
         } else {
-          // Fallback: incrémenter localement
           setClicks(prev => prev + 1);
         }
       }
-      
     } catch (error) {
       console.error('Erreur:', error);
-      // En cas d'erreur, incrémenter localement quand même
       setClicks(prev => prev + 1);
     } finally {
       setIsLoadingClick(false);
     }
-  }, [link.id, link.url, isLoadingClick, clicks])
+  }, [link.id, link.url, isLoadingClick, clicks]);
 
   return (
     <div className="bg-gradient-to-br from-base-100 to-base-200/50 p-4 lg:p-5 rounded-xl border border-base-300 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
@@ -854,14 +939,14 @@ const ImageCard = memo(({
         )}
       </div>
     </div>
-  )
-})
+  );
+});
 
-ImageCard.displayName = 'ImageCard'
+ImageCard.displayName = 'ImageCard';
 
 /* ------------------ PREVIEW COMPONENT ------------------ */
 const YoutubePreview = memo(({ url }: { url: string }) => {
-  const videoId = useMemo(() => getYouTubeVideoId(url), [url])
+  const videoId = useMemo(() => getYouTubeVideoId(url), [url]);
   
   if (!videoId) {
     return (
@@ -903,10 +988,10 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
         referrerPolicy="strict-origin-when-cross-origin"
       />
     </div>
-  )
-})
+  );
+});
 
-YoutubePreview.displayName = 'YoutubePreview'
+YoutubePreview.displayName = 'YoutubePreview';
 
 /* ------------------ LIEN AVEC DESCRIPTION ET LIKES ------------------ */
 const LinkWithDescription = memo(({ 
@@ -920,24 +1005,24 @@ const LinkWithDescription = memo(({
   savedPosition?: number;
   onPositionChange?: (linkId: string, position: number) => void;
 }) => {
-  const [showDescription, setShowDescription] = useState(false)
-  const [isLiking, setIsLiking] = useState(false)
-  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false)
-  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0)
-  const [clicks, setClicks] = useState(link.clicks || 0)
+  const [showDescription, setShowDescription] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
+  const [localIsLiked, setLocalIsLiked] = useState(link.isLikedByCurrentUser || false);
+  const [localLikesCount, setLocalLikesCount] = useState(link.likesCount || 0);
+  const [clicks, setClicks] = useState(link.clicks || 0);
 
   // Synchroniser avec les props
   useEffect(() => {
-    setLocalIsLiked(link.isLikedByCurrentUser || false)
-    setLocalLikesCount(link.likesCount || 0)
-    setClicks(link.clicks || 0)
-  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks])
+    setLocalIsLiked(link.isLikedByCurrentUser || false);
+    setLocalLikesCount(link.likesCount || 0);
+    setClicks(link.clicks || 0);
+  }, [link.isLikedByCurrentUser, link.likesCount, link.clicks]);
 
   // Couleur dynamique basée sur l'ID - mémoïsée
   const colorIndex = useMemo(() => 
     Math.abs(link.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 7,
     [link.id]
-  )
+  );
 
   const bgColors = useMemo(() => [
     'bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-900/10 dark:to-red-800/5',
@@ -947,7 +1032,7 @@ const LinkWithDescription = memo(({
     'bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-900/10 dark:to-purple-800/5',
     'bg-gradient-to-br from-pink-50 to-pink-100/50 dark:from-pink-900/10 dark:to-pink-800/5',
     'bg-gradient-to-br from-cyan-50 to-cyan-100/50 dark:from-cyan-900/10 dark:to-cyan-800/5',
-  ], [])
+  ], []);
 
   const borderColors = useMemo(() => [
     'border-red-200/50 dark:border-red-800/20',
@@ -957,7 +1042,7 @@ const LinkWithDescription = memo(({
     'border-purple-200/50 dark:border-purple-800/20',
     'border-pink-200/50 dark:border-pink-800/20',
     'border-cyan-200/50 dark:border-cyan-800/20',
-  ], [])
+  ], []);
 
   const handleLike = useCallback(async () => {
     if (!onLikeToggle || isLiking) return;
@@ -978,11 +1063,11 @@ const LinkWithDescription = memo(({
     } finally {
       setIsLiking(false);
     }
-  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount])
+  }, [onLikeToggle, link.id, isLiking, localIsLiked, localLikesCount, link.isLikedByCurrentUser, link.likesCount]);
 
   const handleToggleDescription = useCallback(() => {
-    setShowDescription(prev => !prev)
-  }, [])
+    setShowDescription(prev => !prev);
+  }, []);
 
   const handleShare = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -995,18 +1080,14 @@ const LinkWithDescription = memo(({
     };
     
     try {
-      // Vérifier si l'API Web Share est disponible (mobile principalement)
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        // Fallback pour desktop : copier le lien dans le presse-papier
         await navigator.clipboard.writeText(link.url);
         toast.success('Lien copié dans le presse-papier !');
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
-        // Si l'utilisateur annule le partage, pas d'erreur
-        // Sinon, essayer le fallback
         try {
           await navigator.clipboard.writeText(link.url);
           toast.success('Lien copié dans le presse-papier !');
@@ -1015,21 +1096,21 @@ const LinkWithDescription = memo(({
         }
       }
     }
-  }, [link.title, link.url, link.pseudo])
+  }, [link.title, link.url, link.pseudo]);
 
-  const isYouTube = isYouTubeUrl(link.url)
-  const isImage = isImageUrl(link.url)
-  const isVideo = isVideoUrl(link.url)
-  const isPdf = isPdfUrl(link.url)
+  const isYouTube = isYouTubeUrl(link.url);
+  const isImage = isImageUrl(link.url);
+  const isVideo = isVideoUrl(link.url);
+  const isPdf = isPdfUrl(link.url);
 
   // Si c'est une vidéo, utiliser VideoCard
   if (isVideo) {
-    return <VideoCard link={link} onLikeToggle={onLikeToggle} savedPosition={savedPosition} onPositionChange={onPositionChange} />
+    return <VideoCard link={link} onLikeToggle={onLikeToggle} savedPosition={savedPosition} onPositionChange={onPositionChange} />;
   }
 
   // Si c'est une image, utiliser ImageCard
   if (isImage) {
-    return <ImageCard link={link} onLikeToggle={onLikeToggle} />
+    return <ImageCard link={link} onLikeToggle={onLikeToggle} />;
   }
 
   // Sinon, afficher la carte normale pour les autres liens
@@ -1157,10 +1238,8 @@ const LinkWithDescription = memo(({
                 event.preventDefault();
                 event.stopPropagation();
                 
-                // Ouvrir le lien
                 window.open(link.url, '_blank', 'noopener,noreferrer');
                 
-                // Incrémenter le compteur de clics
                 try {
                   await incrementClickCount(link.id);
                   setClicks(prev => prev + 1);
@@ -1196,10 +1275,10 @@ const LinkWithDescription = memo(({
         </div>
       </div>
     </div>
-  )
-})
+  );
+});
 
-LinkWithDescription.displayName = 'LinkWithDescription'
+LinkWithDescription.displayName = 'LinkWithDescription';
 
 /* ------------------ CARACTÉRISTIQUES STYLE ------------------ */
 const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: { 
@@ -1212,7 +1291,7 @@ const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: {
     primary: 'bg-gradient-to-br from-primary/10 to-primary/5 text-primary border-primary/20',
     secondary: 'bg-gradient-to-br from-secondary/10 to-secondary/5 text-secondary border-secondary/20',
     accent: 'bg-gradient-to-br from-accent/10 to-accent/5 text-accent border-accent/20'
-  }), [])
+  }), []);
 
   return (
     <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
@@ -1222,184 +1301,108 @@ const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: {
       </div>
       <div className="text-xs opacity-80">{label}</div>
     </div>
-  )
-})
+  );
+});
 
-StatsCard.displayName = 'StatsCard'
+StatsCard.displayName = 'StatsCard';
 
 /* ------------------ DEBOUNCE HOOK ------------------ */
 const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
+      setDebouncedValue(value);
+    }, delay);
 
     return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
 
-  return debouncedValue
-}
+  return debouncedValue;
+};
 
-/* ------------------ PAGE ------------------ */
+/* ------------------ COMPOSANT PRINCIPAL ------------------ */
 const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
-  const { user: currentUser, isSignedIn } = useUser()
-  const [pseudo, setPseudo] = useState<string | null>()
-  const [loading, setLoading] = useState(true)
-  const [links, setLinks] = useState<SocialLinkWithLikes[]>([])
-  const [theme, setTheme] = useState<string | null>()
-  const [search, setSearch] = useState("")
-  const [sortBy, setSortBy] = useState<'clicks' | 'title' | 'recent'>('recent')
-  const [showOnlyWithDescription, setShowOnlyWithDescription] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all')
+  const { user: currentUser, isSignedIn } = useUser();
+  const [pseudo, setPseudo] = useState<string | null>();
+  const [loading, setLoading] = useState(true);
+  const [links, setLinks] = useState<SocialLinkWithLikes[]>([]);
+  const [theme, setTheme] = useState<string | null>();
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<'clicks' | 'title' | 'recent'>('recent');
+  const [showOnlyWithDescription, setShowOnlyWithDescription] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all');
   
-  // État pour les positions des vidéos
-  const [videoPositions, setVideoPositions] = useState<Record<string, number>>({})
+  // Utiliser les hooks personnalisés
+  const { videoPositions, updatePosition, mounted: videoMounted } = useVideoPositions();
+  const debouncedSearch = useDebounce(search, 300);
   
   // État pour éviter l'hydratation
-  const [mounted, setMounted] = useState(false)
-  
-  // Debounce pour la recherche
-  const debouncedSearch = useDebounce(search, 300)
-  const isFirstRender = useRef(true)
+  const [mounted, setMounted] = useState(false);
 
-  // Charger les positions sauvegardées depuis localStorage
   useEffect(() => {
-    if (mounted) {
-      try {
-        const savedPositions = localStorage.getItem('videoPositions');
-        if (savedPositions) {
-          setVideoPositions(JSON.parse(savedPositions));
-        }
-      } catch (error) {
-        console.error('Erreur lors du chargement des positions:', error);
-      }
-    }
-  }, [mounted]);
-
-  // Sauvegarder les positions dans localStorage quand elles changent
-  useEffect(() => {
-    if (mounted && Object.keys(videoPositions).length > 0) {
-      try {
-        localStorage.setItem('videoPositions', JSON.stringify(videoPositions));
-      } catch (error) {
-        console.error('Erreur lors de la sauvegarde des positions:', error);
-      }
-    }
-  }, [videoPositions, mounted]);
-
-  // Fonction pour sauvegarder la position d'une vidéo
-  const handleVideoPositionChange = useCallback((linkId: string, position: number) => {
-    setVideoPositions(prev => ({
-      ...prev,
-      [linkId]: position
-    }));
+    setMounted(true);
   }, []);
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   // Calculer les statistiques avec useMemo
-  const { totalLikes, linksWithDescription, totalClicks, imageLinksCount, videoLinksCount } = useMemo(() => {
-    return {
-      totalLikes: links.reduce((sum, link) => sum + (link.likesCount || 0), 0),
-      linksWithDescription: links.filter(link => 
-        link.description && link.description.trim() !== ""
-      ).length,
-      totalClicks: links.reduce((sum, link) => sum + link.clicks, 0),
-      imageLinksCount: links.filter(link => isImageUrl(link.url)).length,
-      videoLinksCount: links.filter(link => isVideoUrl(link.url)).length
-    }
-  }, [links])
+  const stats = useMemo(() => ({
+    totalLikes: links.reduce((sum, link) => sum + (link.likesCount || 0), 0),
+    linksWithDescription: links.filter(link => 
+      link.description && link.description.trim() !== ""
+    ).length,
+    totalClicks: links.reduce((sum, link) => sum + link.clicks, 0),
+    imageLinksCount: links.filter(link => isImageUrl(link.url)).length,
+    videoLinksCount: links.filter(link => isVideoUrl(link.url)).length
+  }), [links]);
 
   /* ----------- FETCH DATA ----------- */
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true)
-      const resolvedParams = await params
-      const userInfo = await getUserInfo(resolvedParams.pseudo)
+      setLoading(true);
+      const resolvedParams = await params;
+      const userInfo = await getUserInfo(resolvedParams.pseudo);
       
-      if (!userInfo) throw new Error("User not found")
+      if (!userInfo) throw new Error("User not found");
 
-      setPseudo(userInfo.pseudo)
-      setTheme(userInfo.theme)
+      setPseudo(userInfo.pseudo);
+      setTheme(userInfo.theme);
 
       // Appliquer le thème seulement côté client
       if (mounted) {
         document.documentElement.setAttribute(
           "data-theme",
           userInfo.theme || "retro"
-        )
+        );
       }
 
       const fetchedLinks = await getSocialLinksWithLikes(
         resolvedParams.pseudo,
         currentUser?.id
-      )
-      setLinks(fetchedLinks || [])
+      );
+      setLinks(fetchedLinks || []);
     } catch {
-      toast.error("Cette page n'existe pas !")
-      setPseudo(null)
+      toast.error("Cette page n'existe pas !");
+      setPseudo(null);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [params, currentUser?.id, mounted])
+  }, [params, currentUser?.id, mounted]);
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    fetchData();
+  }, [fetchData]);
 
-  /* ----------- FUSE (RECHERCHE INTELLIGENTE) ----------- */
-  const fuse = useMemo(() => {
-    if (links.length === 0) return null
-    
-    return new Fuse(links, {
-      keys: ["title", "url", "description", "pseudo"],
-      threshold: 0.3,
-      includeScore: true,
-      minMatchCharLength: 2,
-    })
-  }, [links])
-
-  /* ----------- FILTRAGE ET TRI ----------- */
-  const processedLinks = useMemo(() => {
-    let result = [...links]
-    
-    // Filtre par recherche (avec debounce)
-    if (debouncedSearch.trim() && fuse) {
-      result = fuse.search(debouncedSearch).map(result => result.item)
-    }
-    
-    // Filtre par description
-    if (showOnlyWithDescription) {
-      result = result.filter(link => link.description && link.description.trim() !== "")
-    }
-    
-    // Filtre par statut actif
-    if (activeFilter === 'active') {
-      result = result.filter(link => link.active)
-    }
-    
-    // Tri
-    switch (sortBy) {
-      case 'clicks':
-        result.sort((a, b) => b.clicks - a.clicks)
-        break
-      case 'title':
-        result.sort((a, b) => a.title.localeCompare(b.title))
-        break
-      case 'recent':
-      default:
-        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        break
-    }
-    
-    return result
-  }, [debouncedSearch, fuse, links, showOnlyWithDescription, activeFilter, sortBy])
+  /* ----------- RECHERCHE ET FILTRAGE ----------- */
+  const searchResults = useSearch(links, debouncedSearch);
+  const processedLinks = useFilteredAndSortedLinks(
+    links,
+    searchResults,
+    showOnlyWithDescription,
+    activeFilter,
+    sortBy
+  );
 
   /* ----------- GESTION DES LIKES ----------- */
   const handleLikeToggle = useCallback(async (linkId: string) => {
@@ -1471,7 +1474,6 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       
       // Simulation locale si l'API n'existe pas
       if (error.message === "API non disponible, simulation locale") {
-        // Mise à jour locale uniquement
         setLinks(prevLinks =>
           prevLinks.map(link => {
             if (link.id === linkId) {
@@ -1488,7 +1490,6 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           })
         );
         
-        // Mettre à jour le localStorage
         if (mounted && currentUser && typeof window !== 'undefined') {
           const likedLinksKey = `likedLinks_${currentUser.id}`;
           const likedLinks = JSON.parse(localStorage.getItem(likedLinksKey) || '{}');
@@ -1511,7 +1512,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         fetchData();
       }
     }
-  }, [isSignedIn, currentUser, links, fetchData, mounted])
+  }, [isSignedIn, currentUser, links, fetchData, mounted]);
 
   /* ----------- RESTAURER LES LIKES DEPUIS LE LOCALSTORAGE ----------- */
   useEffect(() => {
@@ -1526,28 +1527,28 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         }))
       );
     }
-  }, [mounted, isSignedIn, currentUser, links.length])
+  }, [mounted, isSignedIn, currentUser, links.length]);
 
   /* ----------- HANDLERS ----------- */
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value || "")
-  }, [])
+    setSearch(e.target.value || "");
+  }, []);
 
   const handleClearSearch = useCallback(() => {
-    setSearch("")
-  }, [])
+    setSearch("");
+  }, []);
 
   const handleToggleDescriptionFilter = useCallback(() => {
-    setShowOnlyWithDescription(prev => !prev)
-  }, [])
+    setShowOnlyWithDescription(prev => !prev);
+  }, []);
 
   const handleActiveFilterChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setActiveFilter(e.target.value as 'all' | 'active')
-  }, [])
+    setActiveFilter(e.target.value as 'all' | 'active');
+  }, []);
 
   const handleSortByChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSortBy(e.target.value as 'clicks' | 'title' | 'recent')
-  }, [])
+    setSortBy(e.target.value as 'clicks' | 'title' | 'recent');
+  }, []);
 
   /* ----------- RENDER FUNCTIONS ----------- */
   const renderLoading = () => (
@@ -1555,7 +1556,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       <span className="loading loading-spinner loading-lg text-primary mb-4"></span>
       <p className="text-sm opacity-70">Chargement des liens...</p>
     </div>
-  )
+  );
 
   const renderEmptyState = () => (
     <div className="text-center py-12 bg-base-100 rounded-2xl border border-base-300">
@@ -1576,16 +1577,16 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         </button>
       )}
     </div>
-  )
+  );
 
-  const renderLinksList = () => {
+  const renderLinksList = useCallback(() => {
     // Séparer les médias des autres liens pour un meilleur affichage
-    const videoLinks = processedLinks.filter(link => isVideoUrl(link.url))
-    const imageLinks = processedLinks.filter(link => isImageUrl(link.url))
+    const videoLinks = processedLinks.filter(link => isVideoUrl(link.url));
+    const imageLinks = processedLinks.filter(link => isImageUrl(link.url));
     const otherLinks = processedLinks.filter(link => 
       !isVideoUrl(link.url) && !isImageUrl(link.url) && !isPdfUrl(link.url)
-    )
-    const pdfLinks = processedLinks.filter(link => isPdfUrl(link.url))
+    );
+    const pdfLinks = processedLinks.filter(link => isPdfUrl(link.url));
 
     return (
       <>
@@ -1612,7 +1613,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   link={link}
                   onLikeToggle={handleLikeToggle}
                   savedPosition={videoPositions[link.id]}
-                  onPositionChange={handleVideoPositionChange}
+                  onPositionChange={updatePosition}
                 />
               ))}
             </div>
@@ -1654,7 +1655,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                   link={link}
                   onLikeToggle={handleLikeToggle}
                   savedPosition={videoPositions[link.id]}
-                  onPositionChange={handleVideoPositionChange}
+                  onPositionChange={updatePosition}
                 />
               ))}
             </div>
@@ -1676,61 +1677,152 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
                 link={link}
                 onLikeToggle={handleLikeToggle}
                 savedPosition={videoPositions[link.id]}
-                onPositionChange={handleVideoPositionChange}
+                onPositionChange={updatePosition}
               />
             ))}
           </div>
         )}
       </>
-    )
-  }
+    );
+  }, [processedLinks, handleLikeToggle, videoPositions, updatePosition]);
 
-  const renderMobileView = () => (
+  const renderStats = useCallback(() => (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+      <StatsCard 
+        value={links.length} 
+        label="Liens" 
+        icon={LinkIcon} 
+        color="primary"
+      />
+      <StatsCard 
+        value={stats.totalLikes} 
+        label="Likes" 
+        icon={Heart} 
+        color="secondary"
+      />
+      <StatsCard 
+        value={stats.totalClicks} 
+        label="Clics" 
+        icon={Zap} 
+        color="accent"
+      />
+      <StatsCard 
+        value={stats.imageLinksCount} 
+        label="Images" 
+        icon={ImageIcon} 
+        color="primary"
+      />
+    </div>
+  ), [links.length, stats]);
+
+  const renderFilters = useCallback(() => (
+    <div className="bg-base-100 rounded-2xl p-4 lg:p-5 border border-base-300 shadow-sm">
+      <div className="space-y-4">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          Filtres & Tri
+        </h3>
+        
+        <div className="space-y-3">
+          <button
+            onClick={handleToggleDescriptionFilter}
+            className={`btn btn-sm w-full justify-start gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
+          >
+            {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
+          </button>
+
+          <select
+            className="select select-sm select-bordered w-full"
+            value={activeFilter}
+            onChange={handleActiveFilterChange}
+          >
+            <option value="all">Tous les liens</option>
+            <option value="active">Liens actifs uniquement</option>
+          </select>
+
+          <select
+            className="select select-sm select-bordered w-full"
+            value={sortBy}
+            onChange={handleSortByChange}
+          >
+            <option value="recent">Plus récents</option>
+            <option value="clicks">Plus populaires</option>
+            <option value="title">Ordre alphabétique</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  ), [showOnlyWithDescription, activeFilter, sortBy, handleToggleDescriptionFilter, handleActiveFilterChange, handleSortByChange]);
+
+  const renderHeader = useCallback(() => (
+    <div className="flex flex-col items-center space-y-4">
+      <div className="relative">
+        <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
+        <Avatar pseudo={pseudo || ""} />
+      </div>
+      
+      <div className="text-center">
+        <h1 className="text-xl lg:text-2xl font-bold">{pseudo}</h1>
+        <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
+      </div>
+    </div>
+  ), [pseudo]);
+
+  const renderSearch = useCallback(() => (
+    <div className="relative">
+      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 lg:w-5 lg:h-5 opacity-50" />
+      <input
+        type="text"
+        className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm lg:text-base"
+        placeholder="Rechercher un lien par titre, pseudo ou description..."
+        value={search}
+        onChange={handleSearchChange}
+      />
+      {search && (
+        <button
+          onClick={handleClearSearch}
+          className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  ), [search, handleSearchChange, handleClearSearch]);
+
+  const renderCTASection = useCallback(() => (
+    <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-5 lg:p-6 text-center border border-primary/10">
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 lg:w-6 lg:h-6 text-primary" />
+          <h3 className="font-semibold text-lg lg:text-xl">Créez votre page gratuite</h3>
+        </div>
+        <p className="text-sm lg:text-base opacity-80 max-w-md">
+          Rassemblez tous vos liens sociaux en une seule page élégante
+        </p>
+        <div className="flex gap-3 mt-2">
+          <a href="/sign-up" className="btn btn-primary btn-sm lg:btn-md px-4 lg:px-6">
+            <UserPlus className="w-4 h-4" />
+            Commencer maintenant
+          </a>
+          <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
+            <LogIn className="w-4 h-4" />
+            Se connecter
+          </a>
+        </div>
+      </div>
+    </div>
+  ), []);
+
+  const renderMobileView = useCallback(() => (
     <div className="lg:hidden">
       {/* Header mobile */}
       <div className="sticky top-0 z-10 bg-base-100/80 backdrop-blur-sm pb-4 mb-6">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="relative">
-            <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
-            <Avatar pseudo={pseudo || ""} />
-          </div>
-          
-          <div className="text-center">
-            <h1 className="text-xl font-bold">{pseudo}</h1>
-            <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
-          </div>
-        </div>
+        {renderHeader()}
       </div>
 
       {/* Stats mobiles */}
-      {links.length > 0 && (
-        <div className="grid grid-cols-4 gap-2 mb-6">
-          <StatsCard 
-            value={links.length} 
-            label="Liens" 
-            icon={LinkIcon} 
-            color="primary"
-          />
-          <StatsCard 
-            value={totalLikes} 
-            label="Likes" 
-            icon={Heart} 
-            color="secondary"
-          />
-          <StatsCard 
-            value={totalClicks} 
-            label="Clics" 
-            icon={Zap} 
-            color="accent"
-          />
-          <StatsCard 
-            value={imageLinksCount} 
-            label="Images" 
-            icon={ImageIcon} 
-            color="primary"
-          />
-        </div>
-      )}
+      {links.length > 0 && renderStats()}
 
       {/* Message pour les utilisateurs non connectés */}
       {!isSignedIn && (
@@ -1748,51 +1840,19 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       )}
 
       {/* Filtres mobiles */}
-      <div className="bg-base-100 rounded-2xl p-4 border border-base-300 shadow-sm mb-6">
-        <div className="space-y-4">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Filtres & Tri
-          </h3>
-          
-          <div className="space-y-3">
-            <button
-              onClick={handleToggleDescriptionFilter}
-              className={`btn btn-sm w-full justify-start gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
-            </button>
-
-            <select
-              className="select select-sm select-bordered w-full"
-              value={activeFilter}
-              onChange={handleActiveFilterChange}
-            >
-              <option value="all">Tous les liens</option>
-              <option value="active">Liens actifs uniquement</option>
-            </select>
-
-            <select
-              className="select select-sm select-bordered w-full"
-              value={sortBy}
-              onChange={handleSortByChange}
-            >
-              <option value="recent">Plus récents</option>
-              <option value="clicks">Plus populaires</option>
-              <option value="title">Ordre alphabétique</option>
-            </select>
-          </div>
+      {links.length > 0 && (
+        <div className="mb-6">
+          {renderFilters()}
         </div>
-      </div>
+      )}
 
       {/* Indication pour les descriptions mobile */}
-      {linksWithDescription > 0 && (
+      {stats.linksWithDescription > 0 && (
         <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-4 border border-primary/10 mb-6">
           <div className="flex items-center gap-2 text-primary">
             <Info className="w-4 h-4" />
             <div className="text-sm">
-              <span className="font-semibold">{linksWithDescription} lien{linksWithDescription > 1 ? 's' : ''}</span> avec détails
+              <span className="font-semibold">{stats.linksWithDescription} lien{stats.linksWithDescription > 1 ? 's' : ''}</span> avec détails
             </div>
           </div>
           <p className="text-xs opacity-70 mt-1">
@@ -1804,24 +1864,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
       {/* Recherche mobile */}
       {links.length > 0 && (
         <div className="bg-base-100 rounded-2xl p-4 border border-base-300 shadow-sm mb-6">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 opacity-50" />
-            <input
-              type="text"
-              className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm"
-              placeholder="Rechercher un lien..."
-              value={search}
-              onChange={handleSearchChange}
-            />
-            {search && (
-              <button
-                onClick={handleClearSearch}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          {renderSearch()}
         </div>
       )}
 
@@ -1833,83 +1876,26 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
 
       {/* CTA mobile */}
       <div className="mt-8 pt-6 border-t border-base-300">
-        <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-5 text-center border border-primary/10">
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-lg">Créez votre page gratuite</h3>
-            </div>
-            <p className="text-sm opacity-80">
-              Rassemblez tous vos liens sociaux en une seule page élégante
-            </p>
-            <div className="flex gap-3 mt-2">
-              <a href="/sign-up" className="btn btn-primary btn-sm px-4">
-                <UserPlus className="w-4 h-4" />
-                Commencer
-              </a>
-              <a href="/sign-in" className="btn btn-outline btn-sm px-4">
-                <LogIn className="w-4 h-4" />
-                Connexion
-              </a>
-            </div>
-          </div>
-        </div>
+        {renderCTASection()}
       </div>
     </div>
-  )
+  ), [links.length, isSignedIn, loading, processedLinks.length, renderHeader, renderStats, renderFilters, stats.linksWithDescription, renderSearch, renderLinksList, renderEmptyState, renderCTASection]);
 
-  const renderDesktopView = () => (
+  const renderDesktopView = useCallback(() => (
     <div className="hidden lg:flex flex-row gap-8 h-[calc(100vh-4rem)]">
       {/* Sidebar desktop */}
       <div className="w-1/3 h-full overflow-y-auto pr-2">
         <div className="space-y-6 pb-8">
           {/* Logo et Avatar */}
           <div className="bg-base-100 rounded-2xl p-6 border border-base-300 shadow-sm">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="mb-2">
-                <Logo />
-              </div>
-              
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-full blur-md"></div>
-                <Avatar pseudo={pseudo || ""} />
-              </div>
-              
-              <div className="text-center">
-                <h1 className="text-2xl font-bold">{pseudo}</h1>
-                <p className="text-sm opacity-70 mt-1">Page de liens personnels</p>
-              </div>
+            <div className="mb-2">
+              <Logo />
             </div>
+            
+            {renderHeader()}
 
             {/* Stats AVEC LIKES et IMAGES */}
-            {links.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 mt-6">
-                <StatsCard 
-                  value={links.length} 
-                  label="Liens" 
-                  icon={LinkIcon} 
-                  color="primary"
-                />
-                <StatsCard 
-                  value={totalLikes} 
-                  label="Likes" 
-                  icon={Heart} 
-                  color="secondary"
-                />
-                <StatsCard 
-                  value={totalClicks} 
-                  label="Clics" 
-                  icon={Zap} 
-                  color="accent"
-                />
-                <StatsCard 
-                  value={imageLinksCount} 
-                  label="Images" 
-                  icon={ImageIcon} 
-                  color="primary"
-                />
-              </div>
-            )}
+            {links.length > 0 && renderStats()}
 
             {/* Actions */}
             <div className="flex flex-col gap-2 mt-6">
@@ -1925,51 +1911,15 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           </div>
 
           {/* Filtres */}
-          <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <Filter className="w-4 h-4" />
-                Filtres & Tri
-              </h3>
-              
-              <div className="space-y-3">
-                <button
-                  onClick={handleToggleDescriptionFilter}
-                  className={`btn btn-sm w-full justify-start gap-2 ${showOnlyWithDescription ? 'btn-primary' : 'btn-ghost'}`}
-                >
-                  {showOnlyWithDescription ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  {showOnlyWithDescription ? 'Tous les liens' : 'Avec description'}
-                </button>
-
-                <select
-                  className="select select-sm select-bordered w-full"
-                  value={activeFilter}
-                  onChange={handleActiveFilterChange}
-                >
-                  <option value="all">Tous les liens</option>
-                  <option value="active">Liens actifs uniquement</option>
-                </select>
-
-                <select
-                  className="select select-sm select-bordered w-full"
-                  value={sortBy}
-                  onChange={handleSortByChange}
-                >
-                  <option value="recent">Plus récents</option>
-                  <option value="clicks">Plus populaires</option>
-                  <option value="title">Ordre alphabétique</option>
-                </select>
-              </div>
-            </div>
-          </div>
+          {links.length > 0 && renderFilters()}
 
           {/* Indication pour les descriptions */}
-          {linksWithDescription > 0 && (
+          {stats.linksWithDescription > 0 && (
             <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-4 border border-primary/10">
               <div className="flex items-center gap-2 text-primary">
                 <Info className="w-4 h-4" />
                 <div className="text-sm">
-                  <span className="font-semibold">{linksWithDescription} lien{linksWithDescription > 1 ? 's' : ''}</span> avec détails
+                  <span className="font-semibold">{stats.linksWithDescription} lien{stats.linksWithDescription > 1 ? 's' : ''}</span> avec détails
                 </div>
               </div>
               <p className="text-xs opacity-70 mt-1">
@@ -1986,24 +1936,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           {/* Recherche */}
           {links.length > 0 && (
             <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-50" />
-                <input
-                  type="text"
-                  className="w-full pl-12 pr-12 py-3 border border-base-300 rounded-xl bg-base-100 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-base"
-                  placeholder="Rechercher un lien par titre, pseudo ou description..."
-                  value={search}
-                  onChange={handleSearchChange}
-                />
-                {search && (
-                  <button
-                    onClick={handleClearSearch}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-50 hover:opacity-70"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+              {renderSearch()}
             </div>
           )}
 
@@ -2025,41 +1958,17 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
           {/* Liens */}
           <div className="space-y-5">
             {loading ? renderLoading() : 
-             processedLinks.length > 0 ? (
-              <>
-                {renderLinksList()}
-              </>
-            ) : renderEmptyState()}
+             processedLinks.length > 0 ? renderLinksList() : renderEmptyState()}
           </div>
 
           {/* Footer CTA */}
           <div className="mt-12 pt-8 border-t border-base-300">
-            <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-2xl p-6 text-center border border-primary/10">
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-6 h-6 text-primary" />
-                  <h3 className="font-semibold text-xl">Créez votre page gratuite</h3>
-                </div>
-                <p className="text-base opacity-80 max-w-md">
-                  Rassemblez tous vos liens sociaux en une seule page élégante
-                </p>
-                <div className="flex gap-3 mt-2">
-                  <a href="/sign-up" className="btn btn-primary btn-md px-6">
-                    <UserPlus className="w-4 h-4" />
-                    Commencer maintenant
-                  </a>
-                  <a href="/sign-in" className="btn btn-outline btn-md px-6">
-                    <LogIn className="w-4 h-4" />
-                    Se connecter
-                  </a>
-                </div>
-              </div>
-            </div>
+            {renderCTASection()}
           </div>
         </div>
       </div>
     </div>
-  )
+  ), [links.length, isSignedIn, loading, processedLinks.length, renderHeader, renderStats, renderFilters, stats.linksWithDescription, renderSearch, renderLinksList, renderEmptyState, renderCTASection]);
 
   if (!mounted) {
     return (
@@ -2100,7 +2009,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         {renderDesktopView()}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Page
+export default Page;
