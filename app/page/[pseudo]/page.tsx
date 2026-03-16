@@ -1805,10 +1805,10 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
             <UserPlus className="w-4 h-4" />
             Commencer 
           </a>
-          <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
+        {/*  <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
             <LogIn className="w-4 h-4" />
             Se connecter
-          </a>
+          </a>  */} 
         </div>
       </div>
     </div>
