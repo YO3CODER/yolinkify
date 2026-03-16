@@ -1808,7 +1808,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         <div className="flex gap-3 mt-2">
           <a href="/sign-up" className="btn btn-primary btn-sm lg:btn-md px-4 lg:px-6">
             <UserPlus className="w-4 h-4" />
-            Commencer maintenant
+            Commencer 
           </a>
           <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
             <LogIn className="w-4 h-4" />
