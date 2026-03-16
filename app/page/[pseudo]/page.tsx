@@ -1687,8 +1687,9 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   }, [processedLinks, handleLikeToggle, videoPositions, updatePosition]);
 
   const renderStats = useCallback(() => (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-6 text-2xl">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-6 text-xl">
       <StatsCard 
+     
         value={links.length} 
         label="Liens" 
         icon={LinkIcon} 
