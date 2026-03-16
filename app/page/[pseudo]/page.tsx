@@ -1296,7 +1296,7 @@ const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: {
   return (
     <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
       <div className="flex items-center gap-2 mb-1 lg:mb-2">
-        <Icon className="w-4 h-4 lg:w-5 lg:h-5" />
+        <Icon className="w-3 h-3 lg:w-3 lg:h-3" />
         <div className="text-xl lg:text-2xl font-bold">{value}</div>
       </div>
       <div className="text-xs opacity-80">{label}</div>
