@@ -946,7 +946,6 @@ ImageCard.displayName = 'ImageCard';
 /* ------------------ PREVIEW COMPONENT ------------------ */
 const YoutubePreview = memo(({ url }: { url: string }) => {
   const videoId = useMemo(() => getYouTubeVideoId(url), [url]);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   
   if (!videoId) {
     return (
@@ -964,43 +963,14 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
             <p className="text-xs opacity-70">
               Lien YouTube détecté
             </p>
-            <div className="flex items-center justify-center gap-2 mt-3">
-              <svg className="w-4 h-4 opacity-70" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
-              </svg>
-              <span className="text-xs">Ouvrir la vidéo</span>
-            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // Version mobile plein écran
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-        <button
-          onClick={() => setIsFullscreen(false)}
-          className="absolute top-4 right-4 z-10 btn btn-circle btn-sm bg-white/20 backdrop-blur-sm border-white/30 text-white hover:bg-white/30"
-        >
-          ✕
-        </button>
-        <iframe
-          src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&controls=1&autoplay=1`}
-          title="YouTube vidéo plein écran"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="w-full h-full"
-          loading="lazy"
-          referrerPolicy="strict-origin-when-cross-origin"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-base-300 mb-4 shadow-sm group">
+    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-base-300 mb-4 shadow-sm">
       <iframe
         src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&controls=1`}
         title="Prévisualisation YouTube"
@@ -1012,15 +982,17 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
       />
       
       {/* Bouton plein écran pour mobile */}
-      <button
-        onClick={() => setIsFullscreen(true)}
-        className="lg:hidden absolute bottom-2 right-2 z-10 btn btn-circle btn-sm bg-black/50 backdrop-blur-sm border-white/20 text-white hover:bg-black/70 transition-opacity opacity-0 group-hover:opacity-100"
-        title="Plein écran"
+      <a
+        href={`https://www.youtube.com/watch?v=${videoId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lg:hidden absolute bottom-2 right-2 z-10 btn btn-circle btn-sm bg-black/50 backdrop-blur-sm border-white/20 text-white hover:bg-black/70"
+        title="Regarder en plein écran"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0 0l-5-5m-7 11v4m0 0h4m-4 0l5-5m7 5v-4m0 4h-4m4 0l-5-5" />
         </svg>
-      </button>
+      </a>
     </div>
   );
 });
