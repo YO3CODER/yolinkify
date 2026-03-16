@@ -1692,7 +1692,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   }, [processedLinks, handleLikeToggle, videoPositions, updatePosition]);
 
   const renderStats = useCallback(() => (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-6">
       <StatsCard 
         value={links.length} 
         label="Liens" 
