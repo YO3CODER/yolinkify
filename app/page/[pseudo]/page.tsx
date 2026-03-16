@@ -1296,8 +1296,8 @@ const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: {
   return (
     <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
       <div className="flex items-center gap-2 mb-1 lg:mb-2">
-        <Icon className="w-4 h-4 lg:w-5 lg:h-5" />
-        <div className="text-xl lg:text-2xl font-bold">{value}</div>
+        <Icon className="w-2 h-2 lg:w-3 lg:h-3" />
+        <div className="text-xl lg:text-xl font-bold">{value}</div>
       </div>
       <div className="text-xs opacity-80">{label}</div>
     </div>
@@ -1687,9 +1687,8 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   }, [processedLinks, handleLikeToggle, videoPositions, updatePosition]);
 
   const renderStats = useCallback(() => (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-6 text-xl">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
       <StatsCard 
-     
         value={links.length} 
         label="Liens" 
         icon={LinkIcon} 
