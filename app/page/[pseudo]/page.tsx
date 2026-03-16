@@ -943,6 +943,7 @@ const ImageCard = memo(({
 });
 
 ImageCard.displayName = 'ImageCard';
+
 /* ------------------ PREVIEW COMPONENT ------------------ */
 const YoutubePreview = memo(({ url }: { url: string }) => {
   const videoId = useMemo(() => getYouTubeVideoId(url), [url]);
@@ -963,6 +964,12 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
             <p className="text-xs opacity-70">
               Lien YouTube détecté
             </p>
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <svg className="w-4 h-4 opacity-70" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+              </svg>
+              <span className="text-xs">Ouvrir la vidéo</span>
+            </div>
           </div>
         </div>
       </div>
@@ -980,24 +987,12 @@ const YoutubePreview = memo(({ url }: { url: string }) => {
         loading="lazy"
         referrerPolicy="strict-origin-when-cross-origin"
       />
-      
-      {/* Bouton plein écran pour mobile */}
-      <a
-        href={`https://www.youtube.com/watch?v=${videoId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lg:hidden absolute bottom-2 right-2 z-10 btn btn-circle btn-sm bg-black/50 backdrop-blur-sm border-white/20 text-white hover:bg-black/70"
-        title="Regarder en plein écran"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0 0l-5-5m-7 11v4m0 0h4m-4 0l5-5m7 5v-4m0 4h-4m4 0l-5-5" />
-        </svg>
-      </a>
     </div>
   );
 });
 
 YoutubePreview.displayName = 'YoutubePreview';
+
 /* ------------------ LIEN AVEC DESCRIPTION ET LIKES ------------------ */
 const LinkWithDescription = memo(({ 
   link, 
@@ -1299,13 +1294,13 @@ const StatsCard = memo(({ value, label, icon: Icon, color = "primary" }: {
   }), []);
 
   return (
-   <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
-  <div className="flex items-center gap-1 mb-0 lg:mb-1">
-    <Icon className="w-4 h-4 lg:w-5 lg:h-5" /> {/* Increased icon size */}
-    <div className="text-lg lg:text-xl font-bold">{value}</div> {/* Adjusted text size hierarchy */}
-  </div>
-  <div className="text-xs opacity-80">{label}</div>
-</div>
+    <div className={`flex flex-col items-center justify-center p-3 lg:p-4 rounded-xl border ${colorClasses[color]} transition-all duration-200 hover:scale-105 hover:shadow-md`}>
+      <div className="flex items-center gap-2 mb-1 lg:mb-2">
+        <Icon className="w-4 h-4 lg:w-5 lg:h-5" />
+        <div className="text-xl lg:text-2xl font-bold">{value}</div>
+      </div>
+      <div className="text-xs opacity-80">{label}</div>
+    </div>
   );
 });
 
@@ -1692,7 +1687,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
   }, [processedLinks, handleLikeToggle, videoPositions, updatePosition]);
 
   const renderStats = useCallback(() => (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
       <StatsCard 
         value={links.length} 
         label="Liens" 
@@ -1808,7 +1803,7 @@ const Page = ({ params }: { params: Promise<{ pseudo: string }> }) => {
         <div className="flex gap-3 mt-2">
           <a href="/sign-up" className="btn btn-primary btn-sm lg:btn-md px-4 lg:px-6">
             <UserPlus className="w-4 h-4" />
-            Commencer 
+            Commencer maintenant
           </a>
           <a href="/sign-in" className="btn btn-outline btn-sm lg:btn-md px-4 lg:px-6">
             <LogIn className="w-4 h-4" />
